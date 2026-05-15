@@ -26,12 +26,8 @@ public final class PlayerCapabilityClientStore {
             return Optional.of(existing);
         }
         PlayerCapability fresh = new PlayerCapability(player);
-        // 子服/维度切换时 entity 对象会重建，但 UUID 相同
-        // 把旧 cap 的模型状态复制到新 cap，避免模型变回 default
-        if (existing != null && existing.isModelInitialized()) {
-            fresh.initModelWithTexture(existing.getModelId(), existing.getCurrentTextureName());
-            fresh.setForceDisabled(existing.isForceDisabled());
-        }
+        // 注意：子服/维度切换时的 cap 状态迁移由 ClientPlayerCloneEvent.onClientPlayerRespawn 处理
+        // 此处不再重复复制，避免双重赋值
         STORE.put(uuid, fresh);
         return Optional.of(fresh);
     }
