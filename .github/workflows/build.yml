@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -33,11 +35,25 @@ jobs:
       - name: Build Fabric mod
         run: gradle :fabric:build --no-daemon
 
+      - name: Read mod version
+        id: properties
+        shell: bash
+        run: |
+          mod_version="$(grep '^mod_version' gradle.properties | cut -d'=' -f2 | xargs)"
+          echo "mod_version=${mod_version}" >> "${GITHUB_OUTPUT}"
+
       - name: Upload mod jar
         uses: actions/upload-artifact@v4
         with:
-          name: openysm-fabric
+          name: openysm-fabric-${{ steps.properties.outputs.mod_version }}
           path: |
             fabric/build/libs/*.jar
             !fabric/build/libs/*-sources.jar
             !fabric/build/libs/*-dev-shadow.jar
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenYSM Fabric ${{ steps.properties.outputs.mod_version }}
+          files: fabric/build/libs/openysm-fabric-${{ steps.properties.outputs.mod_version }}.jar
