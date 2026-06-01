@@ -27,6 +27,6 @@ public final class ClientPlayerCloneEvent {
             PlayerCapability.get(oldPlayer).ifPresent(cap -> PlayerCapability.get(newPlayer).ifPresent(cap2 -> cap2.copyFrom(cap)));
             CapabilityLifecycle.invalidate(oldPlayer);
         }
-        Minecraft.getInstance().execute(() -> ClientModelManager.applyRememberedOfflineModel(newPlayer));
+        Minecraft.getInstance().execute(() -> ClientModelManager.scheduleRememberedOfflineModelApply(newPlayer));
     }
 }

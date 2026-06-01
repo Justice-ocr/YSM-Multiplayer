@@ -46,6 +46,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 @Environment(EnvType.CLIENT)
@@ -72,6 +73,7 @@ public class ClientModelManager {
     private static final ConcurrentLinkedQueue<Pair<ModelAssembly, String>> pendingModelQueue = new ConcurrentLinkedQueue<>();
     private static final WeakHashMap<IGuiWidget, Object> guiWidgets = new WeakHashMap<>();
     private static final SyncStatus syncState = new SyncStatus();
+    private static final AtomicInteger offlineModelApplyGeneration = new AtomicInteger();
 
     public enum SyncState {
         WAITING, LOADING, IDLE, PREPARING, SYNCING
@@ -191,6 +193,41 @@ public class ClientModelManager {
             cap.initModelWithTexture(modelId, finalTextureId);
             cap.setForceDisabled(false);
         });
+    }
+
+    public static void scheduleRememberedOfflineModelApply(LocalPlayer player) {
+        if (player == null || !Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
+            return;
+        }
+        if (StringUtils.isBlank(GeneralConfig.OFFLINE_MODEL_ID.get())) {
+            return;
+        }
+
+        int generation = offlineModelApplyGeneration.incrementAndGet();
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.execute(() -> applyRememberedOfflineModelIfCurrent(player, generation));
+        YSMThreadPool.submit(() -> {
+            int[] delays = {250, 500, 1000, 2000, 4000};
+            for (int delay : delays) {
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                if (offlineModelApplyGeneration.get() != generation) {
+                    return;
+                }
+                minecraft.execute(() -> applyRememberedOfflineModelIfCurrent(player, generation));
+            }
+        });
+    }
+
+    private static void applyRememberedOfflineModelIfCurrent(LocalPlayer player, int generation) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (offlineModelApplyGeneration.get() == generation && minecraft.player == player) {
+            applyRememberedOfflineModel(player);
+        }
     }
 
     private static void loadModelsFromDir(Path dir) {

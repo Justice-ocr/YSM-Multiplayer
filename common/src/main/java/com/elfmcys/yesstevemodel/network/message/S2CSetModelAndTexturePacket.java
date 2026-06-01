@@ -58,6 +58,7 @@ public class S2CSetModelAndTexturePacket {
                 // 原因：服务端版本不兼容时会推送 disabled=true，导致 isModelActive()=false，闪现原版皮肤
                 // 无论服务端发什么，本地玩家始终由客户端自行管理模型和 disabled 状态
                 cap.setForceDisabled(false);
+                ClientModelManager.scheduleRememberedOfflineModelApply(localPlayer);
                 return;
             }
             // 非本地玩家（其他玩家的模型）正常同步
