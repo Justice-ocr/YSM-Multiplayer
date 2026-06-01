@@ -11,6 +11,10 @@ import java.util.Collections;
 import java.util.List;
 
 public class FlatColorButton extends Button {
+    private static final int BUTTON_BG = 0xCC242A30;
+    private static final int BUTTON_SELECTED = 0xFF2F6E62;
+    private static final int BUTTON_HOVER = 0xFF5CC8A7;
+    private static final int TEXT_COLOR = 0xFFF3F0E0;
 
     private boolean selected;
 
@@ -40,17 +44,17 @@ public class FlatColorButton extends Button {
     public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         Font font = Minecraft.getInstance().font;
         if (this.selected) {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -14774017, -14774017);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, BUTTON_SELECTED, BUTTON_SELECTED);
         } else {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -12369342, -12369342);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, BUTTON_BG, BUTTON_BG);
         }
         if (isHoveredOrFocused()) {
-            guiGraphics.fillGradient(getX(), getY() + 1, getX() + 1, (getY() + this.height) - 1, -790560, -790560);
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + 1, -790560, -790560);
-            guiGraphics.fillGradient((getX() + this.width) - 1, getY() + 1, getX() + this.width, (getY() + this.height) - 1, -790560, -790560);
-            guiGraphics.fillGradient(getX(), (getY() + this.height) - 1, getX() + this.width, getY() + this.height, -790560, -790560);
+            guiGraphics.fillGradient(getX(), getY() + 1, getX() + 1, (getY() + this.height) - 1, BUTTON_HOVER, BUTTON_HOVER);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + 1, BUTTON_HOVER, BUTTON_HOVER);
+            guiGraphics.fillGradient((getX() + this.width) - 1, getY() + 1, getX() + this.width, (getY() + this.height) - 1, BUTTON_HOVER, BUTTON_HOVER);
+            guiGraphics.fillGradient(getX(), (getY() + this.height) - 1, getX() + this.width, getY() + this.height, BUTTON_HOVER, BUTTON_HOVER);
         }
-        renderScrollingString(guiGraphics, font, 2, 0xFFF3F0E0);
+        renderScrollingString(guiGraphics, font, 2, TEXT_COLOR);
     }
 
     public void setSelected(boolean selected) {

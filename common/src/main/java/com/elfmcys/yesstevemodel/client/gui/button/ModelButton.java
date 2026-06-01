@@ -138,6 +138,7 @@ public class ModelButton extends Button {
             PlayerCapability.get(localPlayer).ifPresent(cap -> {
                 // 始终在本地应用模型（无论服务器是否有 YSM）
                 cap.initModelWithTexture(this.modelIdHolder.getModelId(), this.modelIdHolder.getCurrentTextureName());
+                ClientModelManager.rememberOfflineModel(this.modelIdHolder.getModelId(), this.modelIdHolder.getCurrentTextureName());
                 // 只有服务端有 YSM 且选择的是服务端模型时才发包
                 // 若发送本地模型ID给服务端，服务端找不到会 resetToDefault 并同步回来覆盖本地设置
                 if (NetworkHandler.isClientConnected()

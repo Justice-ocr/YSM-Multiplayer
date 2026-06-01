@@ -64,6 +64,15 @@ import java.util.*;
 import java.util.function.Consumer;
 
 public class AnimationRouletteScreen extends Screen {
+    private static final int PANEL_BG = 0xAA14171A;
+    private static final int PANEL_SOFT = 0xAA20252A;
+    private static final int ACCENT = 0xFF5CC8A7;
+    private static final int TEXT = 0xFFF3F0E0;
+    private static final int MUTED = 0xFF9DA6AA;
+    private static final int RADIAL_NORMAL = 0xAA20252A;
+    private static final int RADIAL_HOVER = 0xCC2F6E62;
+    private static final int RADIAL_CONFIG = 0x99425B67;
+    private static final int RADIAL_CONFIG_HOVER = 0xCC5CC8A7;
 
     private static final String SUBMENU_PREFIX = "#";
 
@@ -367,9 +376,10 @@ public class AnimationRouletteScreen extends Screen {
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int scrolledMouseY;
+        renderModernFrame(guiGraphics);
         guiGraphics.drawCenteredString(this.font, Component.translatable("gui.yes_steve_model.roulette.path", StringUtils.joinWith(" > ", navigationStack.stream().map((v0) -> {
             return v0.getLeft();
-        }).toArray())), this.centerX + 195, this.centerY - 100, -1);
+        }).toArray())), this.centerX + 195, this.centerY - 100, TEXT);
         renderRadialBackground(guiGraphics, mouseX, mouseY);
         renderRadialButtons(guiGraphics);
         renderPageInfo(guiGraphics);
@@ -410,6 +420,15 @@ public class AnimationRouletteScreen extends Screen {
         }
     }
 
+    private void renderModernFrame(GuiGraphics guiGraphics) {
+        guiGraphics.fill(this.centerX - 118, this.centerY - 118, this.centerX + 116, this.centerY + 118, PANEL_BG);
+        guiGraphics.fill(this.centerX + 120, this.centerY - 118, this.centerX + 278, this.centerY + 118, PANEL_BG);
+        guiGraphics.fill(this.centerX + 120, this.centerY - 118, this.centerX + 278, this.centerY - 116, ACCENT);
+        guiGraphics.fill(this.centerX + 124, this.centerY - 50, this.centerX + 238, this.centerY + 112, PANEL_SOFT);
+        guiGraphics.drawString(this.font, "Roulette", this.centerX - 108, this.centerY - 112, TEXT, false);
+        guiGraphics.drawString(this.font, "Config", this.centerX + 128, this.centerY - 112, MUTED, false);
+    }
+
     private void executeExpression(String str, @Nullable Consumer<String> consumer) {
         try {
             this.animatableModel.executeExpression(GeckoLibCache.parseSimpleExpression(str), true, false, consumer);
@@ -419,8 +438,8 @@ public class AnimationRouletteScreen extends Screen {
     }
 
     private void renderPageInfo(GuiGraphics guiGraphics) {
-        guiGraphics.fill(this.centerX + 157, this.centerY - 87, this.centerX + 238, this.centerY - 72, -822083584);
-        guiGraphics.drawCenteredString(this.font, String.format("%d/%d", Integer.valueOf(this.currentNavEntry.getRight().intValue() + 1), Integer.valueOf(((this.currentProperties.size() - 1) / 8) + 1)), this.centerX + 197, this.centerY - 83, ChatFormatting.AQUA.getColor().intValue() | 0xFF000000);
+        guiGraphics.fill(this.centerX + 157, this.centerY - 87, this.centerX + 238, this.centerY - 72, PANEL_SOFT);
+        guiGraphics.drawCenteredString(this.font, String.format("%d/%d", Integer.valueOf(this.currentNavEntry.getRight().intValue() + 1), Integer.valueOf(((this.currentProperties.size() - 1) / 8) + 1)), this.centerX + 197, this.centerY - 83, ACCENT);
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
@@ -598,7 +617,7 @@ public class AnimationRouletteScreen extends Screen {
             if (StringUtils.isNoneBlank(str)) {
                 renderWrappedLabel(guiGraphics, Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s".formatted(this.currentProperties.getKeyAt(iIntValue)), str)), iCos, labelY, zStartsWith);
             } else {
-                guiGraphics.drawCenteredString(this.font, Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s".formatted(this.currentProperties.getKeyAt(iIntValue)), String.valueOf(iIntValue))), iCos, labelY - 8, 0xFFF3F0E0);
+                guiGraphics.drawCenteredString(this.font, Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s".formatted(this.currentProperties.getKeyAt(iIntValue)), String.valueOf(iIntValue))), iCos, labelY - 8, TEXT);
             }
             if (this.currentNavEntry.getRight().intValue() == 0 && navigationStack.size() == 1) {
                 renderKeyBindings(guiGraphics, iIntValue, iCos, labelY);
@@ -616,7 +635,7 @@ public class AnimationRouletteScreen extends Screen {
             mutableComponentWithStyle.append(keyMapping.getTranslatedKeyMessage());
         }
         mutableComponentWithStyle.append(" ]");
-        guiGraphics.drawCenteredString(this.font, mutableComponentWithStyle, x, y + 4, 0xFFF3F0E0);
+        guiGraphics.drawCenteredString(this.font, mutableComponentWithStyle, x, y + 4, TEXT);
     }
 
     private void renderWrappedLabel(GuiGraphics guiGraphics, MutableComponent mutableComponent, int x, int y, boolean isSubmenu) {
@@ -631,7 +650,7 @@ public class AnimationRouletteScreen extends Screen {
         }
         Iterator it = listSplit.iterator();
         while (it.hasNext()) {
-            guiGraphics.drawCenteredString(this.font, (FormattedCharSequence) it.next(), x, lineY, 0xFFF3F0E0);
+            guiGraphics.drawCenteredString(this.font, (FormattedCharSequence) it.next(), x, lineY, TEXT);
             lineY += 9;
         }
     }
@@ -666,11 +685,11 @@ public class AnimationRouletteScreen extends Screen {
             boolean isConfigSliceHovered = startAngle < pointerAngle && pointerAngle < endAngle && 20.0f < pointerRadius && pointerRadius < 50.0f;
             if (isSubmenu) {
                 if (isConfigSliceHovered) {
-                    drawRadialSegment(guiGraphics, 15.0f, 50.0f, startAngle, endAngle, -268382465);
+                    drawRadialSegment(guiGraphics, 15.0f, 50.0f, startAngle, endAngle, RADIAL_CONFIG_HOVER);
                     hoveredConfig = true;
                     this.hoveredConfigIndex = iIntValue;
                 } else {
-                    drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, 1879101183);
+                    drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, RADIAL_CONFIG);
                 }
             }
         }
@@ -690,13 +709,13 @@ public class AnimationRouletteScreen extends Screen {
         }
         if (isHovered && index < this.currentProperties.size()) {
             if (isSubmenu) {
-                drawRadialSegment(guiGraphics, 50.0f, 115.0f, startAngle, endAngle, -251678464);
-                drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, -1879048192);
+                drawRadialSegment(guiGraphics, 50.0f, 115.0f, startAngle, endAngle, RADIAL_HOVER);
+                drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, RADIAL_CONFIG);
             } else {
-                drawRadialSegment(guiGraphics, 25.0f, 115.0f, startAngle, endAngle, -251678464);
+                drawRadialSegment(guiGraphics, 25.0f, 115.0f, startAngle, endAngle, RADIAL_HOVER);
             }
         } else {
-            drawRadialSegment(guiGraphics, 25.0f, 105.0f, startAngle, endAngle, -1879048192);
+            drawRadialSegment(guiGraphics, 25.0f, 105.0f, startAngle, endAngle, RADIAL_NORMAL);
         }
         return alreadyHovered;
     }

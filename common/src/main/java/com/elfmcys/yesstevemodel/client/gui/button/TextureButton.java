@@ -1,6 +1,7 @@
 package com.elfmcys.yesstevemodel.client.gui.button;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
+import com.elfmcys.yesstevemodel.client.ClientModelManager;
 import com.elfmcys.yesstevemodel.client.entity.PlayerPreviewEntity;
 import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
 import com.elfmcys.yesstevemodel.client.gui.ModelMetadataPresenter;
@@ -23,6 +24,9 @@ import net.minecraft.util.FormattedCharSequence;
 import java.util.List;
 
 public class TextureButton extends Button {
+    private static final int BUTTON_BG = 0xCC242A30;
+    private static final int BUTTON_HOVER = 0xFF5CC8A7;
+    private static final int TEXT = 0xFFF3F0E0;
 
     public final PlayerPreviewEntity previewEntity;
 
@@ -40,7 +44,11 @@ public class TextureButton extends Button {
         if (localPlayer != null) {
             PlayerCapability.get(localPlayer).ifPresent(cap -> {
                 cap.setCurrentTexture(this.previewEntity.getCurrentTextureName());
-                NetworkHandler.sendToServer(new C2SRequestSwitchModelPacket(this.previewEntity.getModelId(), this.previewEntity.getCurrentTextureName()));
+                ClientModelManager.rememberOfflineModel(this.previewEntity.getModelId(), this.previewEntity.getCurrentTextureName());
+                if (NetworkHandler.isClientConnected()
+                        && ClientModelManager.isServerModel(this.previewEntity.getModelId())) {
+                    NetworkHandler.sendToServer(new C2SRequestSwitchModelPacket(this.previewEntity.getModelId(), this.previewEntity.getCurrentTextureName()));
+                }
             });
         }
     }
@@ -48,22 +56,22 @@ public class TextureButton extends Button {
     public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         Minecraft minecraft = Minecraft.getInstance();
         Font font = minecraft.font;
-        guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -12369342, -12369342);
+        guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, BUTTON_BG, BUTTON_BG);
         renderPlayerPreview(guiGraphics, minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false));
         String str = this.previewEntity.getCurrentTextureName();
         MutableComponent mutableComponentLiteral = Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.modelAssembly, "files.player.texture.%s".formatted(str), str));
         List listSplit = font.split(mutableComponentLiteral, 50);
         if (listSplit.size() > 1) {
-            guiGraphics.drawCenteredString(font, (FormattedCharSequence) listSplit.get(0), getX() + (this.width / 2), (getY() + this.height) - 19, 0xFFF3F0E0);
-            guiGraphics.drawCenteredString(font, (FormattedCharSequence) listSplit.get(1), getX() + (this.width / 2), (getY() + this.height) - 10, 0xFFF3F0E0);
+            guiGraphics.drawCenteredString(font, (FormattedCharSequence) listSplit.get(0), getX() + (this.width / 2), (getY() + this.height) - 19, TEXT);
+            guiGraphics.drawCenteredString(font, (FormattedCharSequence) listSplit.get(1), getX() + (this.width / 2), (getY() + this.height) - 10, TEXT);
         } else {
-            guiGraphics.drawCenteredString(font, mutableComponentLiteral, getX() + (this.width / 2), (getY() + this.height) - 15, 0xFFF3F0E0);
+            guiGraphics.drawCenteredString(font, mutableComponentLiteral, getX() + (this.width / 2), (getY() + this.height) - 15, TEXT);
         }
         if (isHoveredOrFocused()) {
-            guiGraphics.fillGradient(getX(), getY() + 1, getX() + 1, (getY() + this.height) - 1, -790560, -790560);
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + 1, -790560, -790560);
-            guiGraphics.fillGradient((getX() + this.width) - 1, getY() + 1, getX() + this.width, (getY() + this.height) - 1, -790560, -790560);
-            guiGraphics.fillGradient(getX(), (getY() + this.height) - 1, getX() + this.width, getY() + this.height, -790560, -790560);
+            guiGraphics.fillGradient(getX(), getY() + 1, getX() + 1, (getY() + this.height) - 1, BUTTON_HOVER, BUTTON_HOVER);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + 1, BUTTON_HOVER, BUTTON_HOVER);
+            guiGraphics.fillGradient((getX() + this.width) - 1, getY() + 1, getX() + this.width, (getY() + this.height) - 1, BUTTON_HOVER, BUTTON_HOVER);
+            guiGraphics.fillGradient(getX(), (getY() + this.height) - 1, getX() + this.width, getY() + this.height, BUTTON_HOVER, BUTTON_HOVER);
         }
     }
 

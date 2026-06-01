@@ -27,6 +27,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public class ModelInfoScreen extends Screen {
+    private static final int PANEL_BG = 0xCC14171A;
+    private static final int PANEL_SOFT = 0xAA20252A;
+    private static final int ACCENT = 0xFF5CC8A7;
+    private static final int TEXT = 0xFFF3F0E0;
 
     private static final ResourceLocation DEFAULT_AVATAR = ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "texture/default_avatar.png");
 
@@ -136,13 +140,13 @@ public class ModelInfoScreen extends Screen {
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        guiGraphics.fillGradient(this.guiLeft + 25, this.guiTop + 150, this.guiLeft + 305, this.guiTop + 220, -1889838245, -1889838245);
+        renderModernFrame(guiGraphics);
         Metadata metadata2 = this.modelData.getExtraInfo();
         if (metadata2 != null) {
             int lineOffset = 0;
             Iterator it = this.font.split(Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "metadata.tips", metadata2.getTips())), 270).iterator();
             while (it.hasNext()) {
-                guiGraphics.drawString(this.font, (FormattedCharSequence) it.next(), this.guiLeft + 30, this.guiTop + 154 + lineOffset, -1);
+                guiGraphics.drawString(this.font, (FormattedCharSequence) it.next(), this.guiLeft + 30, this.guiTop + 154 + lineOffset, TEXT);
                 Objects.requireNonNull(this.font);
                 lineOffset += 9;
                 Objects.requireNonNull(this.font);
@@ -157,6 +161,14 @@ public class ModelInfoScreen extends Screen {
         }).forEach(renderable2 -> {
             ((AuthorButton) renderable2).refreshContactComponents(guiGraphics, this, mouseX, mouseY);
         });
+    }
+
+    private void renderModernFrame(GuiGraphics guiGraphics) {
+        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 235, PANEL_BG);
+        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 2, ACCENT);
+        guiGraphics.fill(this.guiLeft + 20, this.guiTop + 10, this.guiLeft + 400, this.guiTop + 140, PANEL_SOFT);
+        guiGraphics.fill(this.guiLeft + 25, this.guiTop + 150, this.guiLeft + 305, this.guiTop + 220, PANEL_SOFT);
+        guiGraphics.drawString(this.font, "Model Info", this.guiLeft + 28, this.guiTop + 4, TEXT, false);
     }
 
     @Override

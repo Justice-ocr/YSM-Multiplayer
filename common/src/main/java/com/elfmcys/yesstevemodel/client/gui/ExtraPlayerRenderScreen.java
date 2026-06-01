@@ -13,6 +13,9 @@ import net.minecraft.util.FormattedCharSequence;
 
 
 public class ExtraPlayerRenderScreen extends Screen {
+    private static final int PANEL_BG = 0x9914171A;
+    private static final int ACCENT = 0xFF5CC8A7;
+    private static final int TEXT = 0xFFF3F0E0;
 
     private static final char RESET_KEY = 'r';
 
@@ -84,9 +87,11 @@ public class ExtraPlayerRenderScreen extends Screen {
         guiGraphics.fillGradient(boxLeft, boxTop, boxRight, boxBottom, 1342177279, 1342177279);
         guiGraphics.fillGradient(boxLeft - this.offsetX, boxTop - this.offsetX, boxLeft + this.offsetX, boxTop + this.offsetX, -16711777, -16711777);
         guiGraphics.fillGradient(boxRight - this.offsetX, boxBottom - this.offsetX, boxRight + this.offsetX, boxBottom + this.offsetX, -16777057, -16777057);
+        guiGraphics.fill(this.width - 525, 8, this.width - 8, 78, PANEL_BG);
+        guiGraphics.fill(this.width - 525, 8, this.width - 8, 10, ACCENT);
         int tipY = 15;
         for (FormattedCharSequence formattedCharSequence : this.font.split(Component.translatable("gui.yes_steve_model.extra_player_render.tips"), 500)) {
-            guiGraphics.drawString(this.font, formattedCharSequence, (this.width - 15) - this.font.width(formattedCharSequence), tipY, -1);
+            guiGraphics.drawString(this.font, formattedCharSequence, (this.width - 15) - this.font.width(formattedCharSequence), tipY, TEXT);
             tipY += 10;
         }
         if (Minecraft.getInstance().player != null && !ExtraPlayerRenderConfig.DISABLE_PLAYER_RENDER.get().booleanValue()) {

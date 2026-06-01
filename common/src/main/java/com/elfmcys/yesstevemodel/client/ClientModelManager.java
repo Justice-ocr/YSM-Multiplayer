@@ -1,12 +1,14 @@
 package com.elfmcys.yesstevemodel.client;
 
 import com.elfmcys.yesstevemodel.YesSteveModel;
+import com.elfmcys.yesstevemodel.capability.PlayerCapability;
 import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
 import com.elfmcys.yesstevemodel.client.upload.UploadManager;
 import com.elfmcys.yesstevemodel.client.model.ModelAssemblyFactory;
 import com.elfmcys.yesstevemodel.client.gui.IGuiWidget;
 import com.elfmcys.yesstevemodel.client.texture.OuterFileTexture;
 import com.elfmcys.yesstevemodel.client.upload.IResourceLocatable;
+import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.model.ServerModelManager;
 import com.elfmcys.yesstevemodel.network.NetworkHandler;
 import com.elfmcys.yesstevemodel.network.message.C2SModelSyncPayload;
@@ -23,6 +25,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceMaps;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
@@ -124,9 +127,69 @@ public class ClientModelManager {
 
             // 加载完成，通知 GUI 刷新，切换为 IDLE
             Minecraft.getInstance().execute(() -> {
+                flushPendingModels();
+                applyRememberedOfflineModel();
                 syncState.setState(SyncState.IDLE);
                 forEachGuiWidget(IGuiWidget::onSyncComplete);
             });
+        });
+    }
+
+    public static void rememberOfflineModel(String modelId, String textureId) {
+        if (StringUtils.isBlank(modelId)) {
+            return;
+        }
+
+        GeneralConfig.OFFLINE_MODEL_ID.set(modelId);
+        GeneralConfig.OFFLINE_TEXTURE_ID.set(StringUtils.defaultString(textureId));
+        GeneralConfig.OFFLINE_MODEL_ID.save();
+        GeneralConfig.OFFLINE_TEXTURE_ID.save();
+    }
+
+    public static void applyRememberedOfflineModel() {
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        if (player == null) {
+            return;
+        }
+        applyRememberedOfflineModel(player);
+    }
+
+    public static void applyRememberedOfflineModel(LocalPlayer player) {
+        if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
+            return;
+        }
+
+        String modelId = GeneralConfig.OFFLINE_MODEL_ID.get();
+        if (StringUtils.isBlank(modelId)) {
+            return;
+        }
+
+        flushPendingModels();
+        ModelAssembly modelAssembly = modelAssemblyMap.get(modelId);
+        if (modelAssembly == null) {
+            YesSteveModel.LOGGER.warn("[YSM Local] Remembered model is not loaded: {}", modelId);
+            return;
+        }
+
+        OrderedStringMap<String, ? extends AbstractTexture> textures = modelAssembly.getAnimationBundle().getTextures();
+        if (textures.isEmpty()) {
+            YesSteveModel.LOGGER.warn("[YSM Local] Remembered model has no textures: {}", modelId);
+            return;
+        }
+
+        String textureId = GeneralConfig.OFFLINE_TEXTURE_ID.get();
+        if (StringUtils.isBlank(textureId) || !textures.containsKey(textureId)) {
+            textureId = modelAssembly.getAnimationBundle().getDefaultTextureName();
+            if (StringUtils.isBlank(textureId) || !textures.containsKey(textureId)) {
+                textureId = textures.getKeyAt(0);
+            }
+        }
+
+        String finalTextureId = textureId;
+        PlayerCapability.get(player).ifPresent(cap -> {
+            cap.initModelWithTexture(modelId, finalTextureId);
+            cap.setForceDisabled(false);
         });
     }
 

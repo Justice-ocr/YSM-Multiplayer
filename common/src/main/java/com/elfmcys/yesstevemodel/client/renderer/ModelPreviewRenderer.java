@@ -68,6 +68,10 @@ public final class ModelPreviewRenderer {
         isFirstPersonMode = firstPersonMode;
     }
 
+    public static boolean isFirstPersonModeEnabled() {
+        return isFirstPersonMode;
+    }
+
     public static boolean isFirstPerson() {
         return isFirstPersonMode || OculusCompat.isPBRActive() || FirstPersonCompat.isFirstPersonActive();
     }

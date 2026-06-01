@@ -25,8 +25,14 @@ public class HandItemRenderer {
             this.geoModel = new PlayerGeoEntity(localPlayer, capability);
         }
         this.geoModel.tickModel();
-        if (this.geoModel.processAnimation(partialTick) == null || (model = this.geoModel.getCurrentModel()) == null) {
-            return;
+        boolean wasFirstPersonMode = ModelPreviewRenderer.isFirstPersonModeEnabled();
+        ModelPreviewRenderer.setFirstPersonMode(true);
+        try {
+            if (this.geoModel.processAnimation(partialTick) == null || (model = this.geoModel.getCurrentModel()) == null) {
+                return;
+            }
+        } finally {
+            ModelPreviewRenderer.setFirstPersonMode(wasFirstPersonMode);
         }
         SpecialPlayerRenderEvent event = new SpecialPlayerRenderEvent(localPlayer, capability, capability.getModelId());
         if (SpecialPlayerRenderEvent.post(event).isFalse()) {

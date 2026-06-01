@@ -36,6 +36,11 @@ import java.util.List;
 import java.util.Objects;
 
 public class PlayerTextureScreen extends Screen {
+    private static final int PANEL_BG = 0xCC14171A;
+    private static final int PANEL_SOFT = 0xAA20252A;
+    private static final int PANEL_DARK = 0xAA0D0F12;
+    private static final int ACCENT = 0xFF5CC8A7;
+    private static final int TEXT = 0xFFF3F0E0;
 
     private static final String HIDDEN_PREFIX = "——";
 
@@ -215,9 +220,7 @@ public class PlayerTextureScreen extends Screen {
             return;
         }
         renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        guiGraphics.fillGradient(this.guiLeft, this.guiTop + 22, this.guiLeft + 90, this.guiTop + 235, -14540254, -14540254);
-        guiGraphics.fillGradient(this.guiLeft + 93, this.guiTop, this.guiLeft + 299, this.guiTop + 235, -14540254, -14540254);
-        guiGraphics.fillGradient(this.guiLeft + 302, this.guiTop, this.guiLeft + 420, this.guiTop + 235, -14540254, -14540254);
+        renderModernFrame(guiGraphics);
         if (!this.modelHolder.getAnimationStateMachine().isCurrentAnimation(this.currentAnimation)) {
             this.modelHolder.getAnimationStateMachine().setCurrentAnimation(this.currentAnimation);
         }
@@ -227,15 +230,24 @@ public class PlayerTextureScreen extends Screen {
         int iWidth = this.guiLeft + 302 + ((118 - this.font.width(str)) / 2);
         int pageY = this.guiTop + 223;
         Objects.requireNonNull(this.font);
-        guiGraphics.drawString(font, str, iWidth, pageY - (9 / 2), 0xFFF3F0E0);
+        guiGraphics.drawString(font, str, iWidth, pageY - (9 / 2), TEXT);
         String str2 = String.format("%d/%d", this.animationCurrentPage + 1, this.animationMaxPage + 1);
-        guiGraphics.drawString(this.font, str2, this.guiLeft + 5 + ((80 - this.font.width(str2)) / 2), this.guiTop + 218, 0xFFF3F0E0);
+        guiGraphics.drawString(this.font, str2, this.guiLeft + 5 + ((80 - this.font.width(str2)) / 2), this.guiTop + 218, TEXT);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
         ((ScreenAccessor) this).ysm$getRenderables().stream().filter(renderable -> {
             return renderable instanceof FlatColorButton;
         }).forEach(renderable2 -> {
             ((FlatColorButton) renderable2).renderTooltip(guiGraphics, this, mouseX, mouseY);
         });
+    }
+
+    private void renderModernFrame(GuiGraphics guiGraphics) {
+        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 235, PANEL_BG);
+        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 2, ACCENT);
+        guiGraphics.fill(this.guiLeft, this.guiTop + 22, this.guiLeft + 90, this.guiTop + 235, PANEL_SOFT);
+        guiGraphics.fill(this.guiLeft + 93, this.guiTop, this.guiLeft + 299, this.guiTop + 235, PANEL_DARK);
+        guiGraphics.fill(this.guiLeft + 302, this.guiTop, this.guiLeft + 420, this.guiTop + 235, PANEL_SOFT);
+        guiGraphics.drawString(this.font, "Textures", this.guiLeft + 96, this.guiTop + 5, TEXT, false);
     }
 
     @Override

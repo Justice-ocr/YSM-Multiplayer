@@ -21,6 +21,9 @@ import net.minecraft.util.FormattedCharSequence;
 import java.util.List;
 
 public class AuthorButton extends Button {
+    private static final int CARD_BG = 0xCC242A30;
+    private static final int CARD_EMPTY = 0x88242A30;
+    private static final int CARD_HOVER = 0xCC2F393D;
 
     private final AuthorInfo authorInfo;
 
@@ -58,14 +61,14 @@ public class AuthorButton extends Button {
     public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         Font font = Minecraft.getInstance().font;
         if (this.authorInfo == null || this.modelAssembly == null || this.resourceLocation == null) {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -1891417534, -1891417534);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, CARD_EMPTY, CARD_EMPTY);
             guiGraphics.drawCenteredString(font, Component.literal("......"), getX() + (this.width / 2), getY() + (this.height / 2), ChatFormatting.GRAY.getColor().intValue() | 0xFF000000);
             return;
         }
         if (isHoveredOrFocused()) {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -1892652116, -1892652116);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, CARD_HOVER, CARD_HOVER);
         } else {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -1891417534, -1891417534);
+            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, CARD_BG, CARD_BG);
         }
         guiGraphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, this.resourceLocation, getX() + 3, getY() + 3, 0.0f, 0.0f, 64, 64, 64, 64);
         String str = ModelMetadataPresenter.getLocalizedModelString(this.modelAssembly, "metadata.authors.%d.name".formatted(this.authorIndex), this.authorInfo.getName());
