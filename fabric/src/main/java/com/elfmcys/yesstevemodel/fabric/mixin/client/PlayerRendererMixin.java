@@ -30,16 +30,7 @@ public abstract class PlayerRendererMixin extends LivingEntityRenderer<AbstractC
         net.minecraft.world.entity.Entity lastEntity =
             ((EntityRenderDispatcherAccessor) Minecraft.getInstance().getEntityRenderDispatcher()).ysm$getLastRenderingEntity();
 
-        Player player;
-        if (lastEntity instanceof Player p) {
-            player = p;
-        } else {
-            // lastRenderingEntity 不是 Player（EntityCulling 等导致过期值），
-            // 用 localPlayer 兜底，保证第一人称渲染正常
-            player = Minecraft.getInstance().player;
-        }
-
-        if (player != null && ReplacePlayerRenderEvent.onRenderPlayerPre(
+        if (lastEntity instanceof Player player && ReplacePlayerRenderEvent.onRenderPlayerPre(
                 player, livingEntityRenderState,
                 Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true),
                 poseStack, multiBufferSource, packedLight)) {
