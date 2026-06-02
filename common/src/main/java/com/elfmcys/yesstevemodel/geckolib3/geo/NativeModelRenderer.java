@@ -21,6 +21,7 @@ import java.lang.Math;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.Locale;
 
@@ -223,6 +224,28 @@ public class NativeModelRenderer {
                     .setNormal(fArr[floatIndex + 9], fArr[floatIndex + 10], fArr[floatIndex + 11]);
             floatIndex += 12;
             intIndex += 2;
+        }
+    }
+
+    @SuppressWarnings("unused") // Called from ysm-core.dll.
+    public static void submitVertices(Object vertexConsumer, int vertexCount, ByteBuffer vertexData, ByteBuffer intData) {
+        if (!(vertexConsumer instanceof VertexConsumer consumer) || vertexData == null || intData == null || vertexCount <= 0) {
+            return;
+        }
+
+        FloatBuffer floats = vertexData.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer();
+        IntBuffer ints = intData.duplicate().order(ByteOrder.nativeOrder()).asIntBuffer();
+        int count = Math.min(vertexCount, Math.min(floats.remaining() / 12, ints.remaining() / 2));
+
+        for (int i = 0; i < count; i++) {
+            int floatIndex = i * 12;
+            int intIndex = i * 2;
+            consumer.addVertex(floats.get(floatIndex), floats.get(floatIndex + 1), floats.get(floatIndex + 2))
+                    .setColor(floats.get(floatIndex + 3), floats.get(floatIndex + 4), floats.get(floatIndex + 5), floats.get(floatIndex + 6))
+                    .setUv(floats.get(floatIndex + 7), floats.get(floatIndex + 8))
+                    .setOverlay(ints.get(intIndex))
+                    .setLight(ints.get(intIndex + 1))
+                    .setNormal(floats.get(floatIndex + 9), floats.get(floatIndex + 10), floats.get(floatIndex + 11));
         }
     }
 
