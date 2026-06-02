@@ -423,24 +423,12 @@ public class ClientModelManager {
 
     @Nullable
     private static String getSingleplayerWorldName(Minecraft minecraft) {
-        Object singleplayerServer = minecraft.getSingleplayerServer();
-        if (singleplayerServer == null) {
+        if (minecraft.getSingleplayerServer() == null) {
             return null;
         }
 
-        try {
-            Object worldData = singleplayerServer.getClass().getMethod("getWorldData").invoke(singleplayerServer);
-            if (worldData == null) {
-                return null;
-            }
-            Object levelName = worldData.getClass().getMethod("getLevelName").invoke(worldData);
-            if (levelName instanceof String name && StringUtils.isNotBlank(name)) {
-                return normalizeServerAddress(name);
-            }
-        } catch (ReflectiveOperationException | SecurityException e) {
-            YesSteveModel.LOGGER.debug("[YSM Local] Failed to resolve singleplayer world name", e);
-        }
-        return null;
+        String levelName = minecraft.getSingleplayerServer().getWorldData().getLevelName();
+        return StringUtils.isBlank(levelName) ? null : normalizeServerAddress(levelName);
     }
 
     private static Path getOfflineModelSelectionsPath() {
