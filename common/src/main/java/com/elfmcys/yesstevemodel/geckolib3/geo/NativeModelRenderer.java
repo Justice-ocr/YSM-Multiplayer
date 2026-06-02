@@ -34,6 +34,7 @@ public class NativeModelRenderer {
     private static long profileNativeCalls;
     private static long profileVertices;
     private static long profileNanos;
+    private static boolean nativeComputeFallbackLogged;
 
     public static void renderMesh(VertexConsumer buffer, PoseStack.Pose pose, GeoModel model, float[] boneParams, float[] stateBuffer, int textureIndex, int renderPartMask, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
         OculusCompat.updatePBRState();
@@ -44,10 +45,11 @@ public class NativeModelRenderer {
         long startNanos = profiling ? System.nanoTime() : 0L;
         boolean useNativeRenderer = Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())
                 && NativeLibLoader.isLoaded();
-        if (useNativeRenderer && model.nativeModelHandle == 0) {
-            model.buildNativeCache();
+        if (useNativeRenderer && !nativeComputeFallbackLogged) {
+            nativeComputeFallbackLogged = true;
+            YesSteveModel.LOGGER.warn("[YSM Render] Native compute renderer is disabled because it can drop model parts; using Java renderer for now");
         }
-        boolean nativePath = useNativeRenderer && model.nativeModelHandle != 0;
+        boolean nativePath = false;
         int vertexCount;
         if (nativePath) {
             vertexCount = nativeRenderModel(buffer, pose, projectionModelViewMatrix, isCompatMode, model, boneParams, stateBuffer, textureIndex, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);
