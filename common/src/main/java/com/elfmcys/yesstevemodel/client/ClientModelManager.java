@@ -79,8 +79,14 @@ public class ClientModelManager {
     private static final WeakHashMap<IGuiWidget, Object> guiWidgets = new WeakHashMap<>();
     private static final SyncStatus syncState = new SyncStatus();
     private static final AtomicInteger offlineModelApplyGeneration = new AtomicInteger();
+    private static final Object offlineModelSelectionsLock = new Object();
+    private static final Map<String, OfflineModelSelection> offlineModelSelections = new ConcurrentHashMap<>();
     private static volatile UUID lockedLocalPlayerUuid;
     private static volatile String lockedServerAddress;
+    private static volatile boolean offlineModelSelectionsLoaded;
+
+    private record OfflineModelSelection(String modelId, String textureId) {
+    }
 
     public enum SyncState {
         WAITING, LOADING, IDLE, PREPARING, SYNCING
@@ -149,10 +155,14 @@ public class ClientModelManager {
             return;
         }
 
-        GeneralConfig.OFFLINE_MODEL_ID.set(modelId);
-        GeneralConfig.OFFLINE_TEXTURE_ID.set(StringUtils.defaultString(textureId));
-        GeneralConfig.OFFLINE_MODEL_ID.save();
-        GeneralConfig.OFFLINE_TEXTURE_ID.save();
+        String sessionKey = getCurrentSessionKey();
+        if (sessionKey == null) {
+            YesSteveModel.LOGGER.warn("[YSM Local] Skip saving local model without a stable session key: {}", modelId);
+            return;
+        }
+
+        offlineModelSelections.put(sessionKey, new OfflineModelSelection(modelId, StringUtils.defaultString(textureId)));
+        saveOfflineModelSelections();
     }
 
     public static void applyRememberedOfflineModel() {
@@ -169,12 +179,13 @@ public class ClientModelManager {
             return;
         }
 
-        String modelId = GeneralConfig.OFFLINE_MODEL_ID.get();
-        if (StringUtils.isBlank(modelId)) {
+        OfflineModelSelection selection = getRememberedOfflineSelection();
+        if (selection == null || StringUtils.isBlank(selection.modelId())) {
             return;
         }
 
         flushPendingModels();
+        String modelId = selection.modelId();
         ModelAssembly modelAssembly = modelAssemblyMap.get(modelId);
         if (modelAssembly == null) {
             YesSteveModel.LOGGER.warn("[YSM Local] Remembered model is not loaded: {}", modelId);
@@ -187,7 +198,7 @@ public class ClientModelManager {
             return;
         }
 
-        String textureId = GeneralConfig.OFFLINE_TEXTURE_ID.get();
+        String textureId = selection.textureId();
         if (StringUtils.isBlank(textureId) || !textures.containsKey(textureId)) {
             textureId = modelAssembly.getAnimationBundle().getDefaultTextureName();
             if (StringUtils.isBlank(textureId) || !textures.containsKey(textureId)) {
@@ -212,13 +223,14 @@ public class ClientModelManager {
             return;
         }
 
-        String modelId = GeneralConfig.OFFLINE_MODEL_ID.get();
-        if (StringUtils.isBlank(modelId)) {
+        OfflineModelSelection selection = getRememberedOfflineSelection();
+        if (selection == null || StringUtils.isBlank(selection.modelId())) {
             return;
         }
 
         PlayerCapability.get(player).ifPresent(cap -> {
-            String textureId = GeneralConfig.OFFLINE_TEXTURE_ID.get();
+            String modelId = selection.modelId();
+            String textureId = selection.textureId();
             boolean modelMismatch = !Objects.equals(modelId, cap.getModelId());
             boolean textureMismatch = StringUtils.isNotBlank(textureId)
                     && !Objects.equals(textureId, cap.currentTextureName);
@@ -232,7 +244,7 @@ public class ClientModelManager {
         if (player == null || !Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
             return;
         }
-        if (StringUtils.isBlank(GeneralConfig.OFFLINE_MODEL_ID.get())) {
+        if (getRememberedOfflineSelection() == null) {
             return;
         }
 
@@ -276,7 +288,7 @@ public class ClientModelManager {
         if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
             return;
         }
-        if (StringUtils.isBlank(GeneralConfig.OFFLINE_MODEL_ID.get())) {
+        if (getRememberedOfflineSelection() == null) {
             return;
         }
 
@@ -385,6 +397,106 @@ public class ClientModelManager {
             normalized = normalized.substring(1);
         }
         return StringUtils.isBlank(normalized) ? null : normalized;
+    }
+
+    @Nullable
+    private static OfflineModelSelection getRememberedOfflineSelection() {
+        loadOfflineModelSelections();
+        String sessionKey = getCurrentSessionKey();
+        return sessionKey == null ? null : offlineModelSelections.get(sessionKey);
+    }
+
+    @Nullable
+    private static String getCurrentSessionKey() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.isLocalServer() || minecraft.hasSingleplayerServer()) {
+            String worldName = getSingleplayerWorldName(minecraft);
+            return StringUtils.isBlank(worldName) ? "singleplayer" : "singleplayer:" + worldName;
+        }
+
+        String serverAddress = getCurrentServerAddressKey();
+        if (StringUtils.isNotBlank(serverAddress)) {
+            return "server:" + serverAddress;
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String getSingleplayerWorldName(Minecraft minecraft) {
+        Object singleplayerServer = minecraft.getSingleplayerServer();
+        if (singleplayerServer == null) {
+            return null;
+        }
+
+        try {
+            Object worldData = singleplayerServer.getClass().getMethod("getWorldData").invoke(singleplayerServer);
+            if (worldData == null) {
+                return null;
+            }
+            Object levelName = worldData.getClass().getMethod("getLevelName").invoke(worldData);
+            if (levelName instanceof String name && StringUtils.isNotBlank(name)) {
+                return normalizeServerAddress(name);
+            }
+        } catch (ReflectiveOperationException | SecurityException e) {
+            YesSteveModel.LOGGER.debug("[YSM Local] Failed to resolve singleplayer world name", e);
+        }
+        return null;
+    }
+
+    private static Path getOfflineModelSelectionsPath() {
+        return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("yes_steve_model_offline_models.properties");
+    }
+
+    private static void loadOfflineModelSelections() {
+        if (offlineModelSelectionsLoaded) {
+            return;
+        }
+        synchronized (offlineModelSelectionsLock) {
+            if (offlineModelSelectionsLoaded) {
+                return;
+            }
+            Path path = getOfflineModelSelectionsPath();
+            if (Files.isRegularFile(path)) {
+                Properties properties = new Properties();
+                try (InputStream inputStream = Files.newInputStream(path)) {
+                    properties.load(inputStream);
+                    for (String propertyName : properties.stringPropertyNames()) {
+                        if (propertyName.endsWith(".model")) {
+                            String sessionKey = propertyName.substring(0, propertyName.length() - ".model".length());
+                            String modelId = properties.getProperty(propertyName, "");
+                            String textureId = properties.getProperty(sessionKey + ".texture", "");
+                            if (StringUtils.isNotBlank(modelId)) {
+                                offlineModelSelections.put(sessionKey, new OfflineModelSelection(modelId, textureId));
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    YesSteveModel.LOGGER.warn("[YSM Local] Failed to load per-server model selections", e);
+                }
+            }
+            offlineModelSelectionsLoaded = true;
+        }
+    }
+
+    private static void saveOfflineModelSelections() {
+        loadOfflineModelSelections();
+        synchronized (offlineModelSelectionsLock) {
+            Properties properties = new Properties();
+            offlineModelSelections.forEach((sessionKey, selection) -> {
+                properties.setProperty(sessionKey + ".model", selection.modelId());
+                properties.setProperty(sessionKey + ".texture", StringUtils.defaultString(selection.textureId()));
+            });
+
+            Path path = getOfflineModelSelectionsPath();
+            try {
+                Files.createDirectories(path.getParent());
+                try (OutputStream outputStream = Files.newOutputStream(path)) {
+                    properties.store(outputStream, "Yes Steve Model per-server local model selections");
+                }
+            } catch (IOException e) {
+                YesSteveModel.LOGGER.warn("[YSM Local] Failed to save per-server model selection", e);
+            }
+        }
     }
 
     private static void loadModelsFromDir(Path dir) {
