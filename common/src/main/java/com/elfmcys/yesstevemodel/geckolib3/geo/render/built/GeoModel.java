@@ -128,6 +128,12 @@ public class GeoModel {
 
     public static native ByteBuffer nGetGpuMeshVertexBuffer(long handle);
 
+    public static native ByteBuffer nGetGpuMeshIndexBuffer(long handle);
+
+    public static native void nReleaseGpuMeshScratch();
+
+    public static native void nFreeGpuMesh(long handle);
+
     public static native void nDestroyModelCache(long handle);
 
     public static native void nComputeModelVertices(
@@ -135,6 +141,13 @@ public class GeoModel {
             float[] matrixTransfer, float[] animTransfer,
             int renderPartMask, int packedLight, int packedOverlay,
             float r, float g, float b, float a);
+
+    public static native void nComputeBoneMatrices(
+            long handle, float[] matrixTransfer, float[] animTransfer, float[] output,
+            int renderPartMask, ByteBuffer scratch);
+
+    public static native void nComputeBoneMatricesLocal(
+            long handle, float[] animTransfer, int renderPartMask, ByteBuffer scratch);
 
     public void buildNativeCache() {
         if (bakedBones == null || bakedBones.isEmpty()) return;
