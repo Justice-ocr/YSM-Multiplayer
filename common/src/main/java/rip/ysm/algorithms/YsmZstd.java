@@ -12,8 +12,13 @@ import java.nio.ByteOrder;
 
 public class YsmZstd {
     public static byte[] decompress(byte[] rawData) throws IOException {
-        if(NativeLibLoader.isLoaded())
-            return YSMNative.ysmZstdDecompress(rawData);
+        if (NativeLibLoader.isLoaded()) {
+            try {
+                return YSMNative.ysmZstdDecompress(rawData);
+            } catch (UnsatisfiedLinkError ignored) {
+                // Some native builds only expose renderer entry points.
+            }
+        }
 
         byte[] data = YsmZstd.wash(rawData);
         //FileUtils.writeByteArrayToFile(new File("test.bin"),data);
@@ -21,8 +26,14 @@ public class YsmZstd {
     }
 
     public static byte[] compress(byte[] rawData) {
-        if(NativeLibLoader.isLoaded())
-            return YSMNative.ysmZstdCompress(rawData,3);
+        if (NativeLibLoader.isLoaded()) {
+            try {
+                return YSMNative.ysmZstdCompress(rawData,3);
+            } catch (UnsatisfiedLinkError ignored) {
+                // Some native builds only expose renderer entry points.
+            }
+        }
+
         byte[] zstdData = ZstdUtil.compress(rawData,3);
         return YsmZstd.obfuscate(zstdData);
     }
