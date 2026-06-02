@@ -25,18 +25,18 @@ public final class NetworkHandler {
 
     private static final AttributeKey<String> CHANNEL_VERSION_KEY = AttributeKey.valueOf("yes_steve_model_channel_version");
 
-    private static volatile boolean clientHandshakeComplete = false;
+    private static volatile Connection clientHandshakeConnection;
 
     public static boolean setChannelVersion(Connection connection, String str) {
         return ((ConnectionAccessor) connection).ysm$getChannel().attr(CHANNEL_VERSION_KEY).compareAndSet(null, str);
     }
 
-    public static void markClientHandshakeComplete() {
-        clientHandshakeComplete = true;
+    public static void markClientHandshakeComplete(Connection connection) {
+        clientHandshakeConnection = connection;
     }
 
     public static void resetClientHandshake() {
-        clientHandshakeComplete = false;
+        clientHandshakeConnection = null;
     }
 
     public static boolean isPlayerConnected(ServerPlayer serverPlayer) {
@@ -44,14 +44,15 @@ public final class NetworkHandler {
     }
 
     public static boolean isClientConnected() {
-        if (clientHandshakeComplete) {
-            return true;
-        }
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null) {
             return false;
         }
-        return isConnectionValid(connection.getConnection());
+        Connection rawConnection = connection.getConnection();
+        if (clientHandshakeConnection == rawConnection) {
+            return true;
+        }
+        return isConnectionValid(rawConnection);
     }
 
     public static boolean isConnectionValid(@Nullable Connection connection) {

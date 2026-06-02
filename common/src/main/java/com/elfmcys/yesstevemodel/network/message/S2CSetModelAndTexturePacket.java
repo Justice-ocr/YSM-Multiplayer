@@ -53,12 +53,16 @@ public class S2CSetModelAndTexturePacket {
     public static void applyOnClient(Entity entity, S2CSetModelAndTexturePacket other) {
         PlayerCapability.get(entity).ifPresent(cap -> {
             LocalPlayer localPlayer = Minecraft.getInstance().player;
-            if (localPlayer != null && localPlayer == entity) {
+            if (ClientModelManager.isLocalPlayerEntity(entity)) {
                 // 本地玩家：完全忽略服务端推送的 disabled 和模型重置
                 // 原因：服务端版本不兼容时会推送 disabled=true，导致 isModelActive()=false，闪现原版皮肤
                 // 无论服务端发什么，本地玩家始终由客户端自行管理模型和 disabled 状态
                 cap.setForceDisabled(false);
-                ClientModelManager.scheduleRememberedOfflineModelApply(localPlayer);
+                if (localPlayer != null) {
+                    ClientModelManager.scheduleRememberedOfflineModelApply(localPlayer);
+                } else if (entity instanceof LocalPlayer player) {
+                    ClientModelManager.scheduleRememberedOfflineModelApply(player);
+                }
                 return;
             }
             // 非本地玩家（其他玩家的模型）正常同步

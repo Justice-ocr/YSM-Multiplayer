@@ -30,6 +30,7 @@ import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.message.StringFormattedMessage;
@@ -228,6 +229,17 @@ public class ClientModelManager {
         if (offlineModelApplyGeneration.get() == generation && minecraft.player == player) {
             applyRememberedOfflineModel(player);
         }
+    }
+
+    public static boolean isLocalPlayerEntity(Entity entity) {
+        if (entity instanceof LocalPlayer) {
+            return true;
+        }
+        LocalPlayer localPlayer = Minecraft.getInstance().player;
+        return localPlayer != null
+                && (localPlayer == entity
+                || localPlayer.getId() == entity.getId()
+                || localPlayer.getUUID().equals(entity.getUUID()));
     }
 
     private static void loadModelsFromDir(Path dir) {
@@ -972,6 +984,10 @@ public class ClientModelManager {
 
         Minecraft.getInstance().execute(() -> {
             syncState.setState(SyncState.IDLE);
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (player != null) {
+                scheduleRememberedOfflineModelApply(player);
+            }
             forEachGuiWidget(IGuiWidget::onSyncComplete);
         });
     }

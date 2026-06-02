@@ -1,6 +1,7 @@
 package com.elfmcys.yesstevemodel.network.message;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
+import com.elfmcys.yesstevemodel.client.ClientModelManager;
 import com.elfmcys.yesstevemodel.event.EntityJoinCallbackEvent;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import it.unimi.dsi.fastutil.ints.Int2FloatArrayMap;
@@ -10,6 +11,8 @@ import it.unimi.dsi.fastutil.ints.Int2FloatOpenHashMap;
 import it.unimi.dsi.fastutil.objects.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
@@ -311,11 +314,17 @@ public class S2CSyncPlayerStatePacket {
     public static void handleCapability(Entity entity, S2CSyncPlayerStatePacket message) {
         if (entity instanceof Player) {
             PlayerCapability.get(entity).ifPresent(cap -> {
-                if ((message.flags & 2048) != 0) {
+                boolean isLocalPlayer = ClientModelManager.isLocalPlayerEntity(entity);
+                if (!isLocalPlayer && (message.flags & 2048) != 0) {
                     if (!StringUtils.isEmpty(message.modelSwitchId)) {
                         cap.requestModelSwitch(message.modelSwitchId);
                     } else {
                         cap.clearModelSwitch();
+                    }
+                } else if (isLocalPlayer && (message.flags & 2048) != 0) {
+                    LocalPlayer localPlayer = Minecraft.getInstance().player;
+                    if (localPlayer != null) {
+                        ClientModelManager.scheduleRememberedOfflineModelApply(localPlayer);
                     }
                 }
                 if ((message.flags & 4096) != 0) {

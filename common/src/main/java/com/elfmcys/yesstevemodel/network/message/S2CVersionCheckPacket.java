@@ -30,7 +30,7 @@ public class S2CVersionCheckPacket {
             ctx.enqueueWork(ClientModelManager::onSyncConnected);
         }
         if (NetworkHandler.VERSION.equals(message.version)) {
-            NetworkHandler.markClientHandshakeComplete();
+            NetworkHandler.markClientHandshakeComplete(ctx.getConnection());
         }
         ctx.enqueueWork(() -> NetworkHandler.sendToServer(new C2SVersionCheckPacket()));
     }
