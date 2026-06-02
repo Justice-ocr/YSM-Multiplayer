@@ -25,6 +25,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceMaps;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.network.Connection;
@@ -41,6 +43,8 @@ import io.netty.buffer.Unpooled;
 
 import java.io.*;
 import java.net.URI;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.file.*;
@@ -76,6 +80,7 @@ public class ClientModelManager {
     private static final SyncStatus syncState = new SyncStatus();
     private static final AtomicInteger offlineModelApplyGeneration = new AtomicInteger();
     private static volatile UUID lockedLocalPlayerUuid;
+    private static volatile String lockedServerAddress;
 
     public enum SyncState {
         WAITING, LOADING, IDLE, PREPARING, SYNCING
@@ -231,10 +236,13 @@ public class ClientModelManager {
             return;
         }
         UUID playerUuid = player.getUUID();
+        String serverAddress = getCurrentServerAddressKey();
         UUID lockedUuid = lockedLocalPlayerUuid;
-        if (!playerUuid.equals(lockedUuid)) {
+        String previousServerAddress = lockedServerAddress;
+        if (!playerUuid.equals(lockedUuid) || !Objects.equals(serverAddress, previousServerAddress)) {
             lockedLocalPlayerUuid = playerUuid;
-            YesSteveModel.LOGGER.info("[YSM Local] Locked local player UUID: {}", playerUuid);
+            lockedServerAddress = serverAddress;
+            YesSteveModel.LOGGER.info("[YSM Local] Locked local session: server={}, uuid={}", serverAddress, playerUuid);
         }
     }
 
@@ -286,12 +294,19 @@ public class ClientModelManager {
 
     public static boolean isLockedLocalPlayerEntity(Entity entity) {
         UUID lockedUuid = lockedLocalPlayerUuid;
-        return lockedUuid != null && lockedUuid.equals(entity.getUUID());
+        if (lockedUuid == null || !lockedUuid.equals(entity.getUUID())) {
+            return false;
+        }
+        String serverAddress = getCurrentServerAddressKey();
+        return serverAddress == null || lockedServerAddress == null || Objects.equals(lockedServerAddress, serverAddress);
     }
 
     public static boolean isLocalPlayerEntity(Entity entity) {
         if (isLockedLocalPlayerEntity(entity)) {
             return true;
+        }
+        if (!isCurrentServerLocked()) {
+            return false;
         }
         if (entity instanceof LocalPlayer) {
             return true;
@@ -301,6 +316,49 @@ public class ClientModelManager {
                 && (localPlayer == entity
                 || localPlayer.getId() == entity.getId()
                 || localPlayer.getUUID().equals(entity.getUUID()));
+    }
+
+    public static boolean isCurrentServerLocked() {
+        String serverAddress = getCurrentServerAddressKey();
+        return serverAddress == null || lockedServerAddress == null || Objects.equals(lockedServerAddress, serverAddress);
+    }
+
+    @Nullable
+    private static String getCurrentServerAddressKey() {
+        Minecraft minecraft = Minecraft.getInstance();
+        ServerData serverData = minecraft.getCurrentServer();
+        if (serverData != null && StringUtils.isNotBlank(serverData.ip)) {
+            return normalizeServerAddress(serverData.ip);
+        }
+
+        ClientPacketListener listener = minecraft.getConnection();
+        if (listener != null) {
+            Connection connection = listener.getConnection();
+            if (connection != null) {
+                return normalizeSocketAddress(connection.getRemoteAddress());
+            }
+        }
+        return null;
+    }
+
+    private static String normalizeSocketAddress(@Nullable SocketAddress address) {
+        if (address instanceof InetSocketAddress inetSocketAddress) {
+            String host = inetSocketAddress.getHostString();
+            int port = inetSocketAddress.getPort();
+            if (StringUtils.isBlank(host)) {
+                return null;
+            }
+            return normalizeServerAddress(port > 0 ? host + ":" + port : host);
+        }
+        return address == null ? null : normalizeServerAddress(address.toString());
+    }
+
+    private static String normalizeServerAddress(String address) {
+        String normalized = StringUtils.trimToEmpty(address).toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        return StringUtils.isBlank(normalized) ? null : normalized;
     }
 
     private static void loadModelsFromDir(Path dir) {
