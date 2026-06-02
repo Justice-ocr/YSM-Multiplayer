@@ -130,7 +130,7 @@ public class GeoModel {
 
     public static native ByteBuffer nGetGpuMeshIndexBuffer(long handle);
 
-    public static native void nReleaseGpuMeshScratch();
+    public static native void nReleaseGpuMeshScratch(long handle);
 
     public static native void nFreeGpuMesh(long handle);
 
