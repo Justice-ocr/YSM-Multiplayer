@@ -40,20 +40,30 @@ jobs:
         shell: bash
         run: |
           mod_version="$(grep '^mod_version' gradle.properties | cut -d'=' -f2 | xargs)"
+          release_version="${mod_version}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            release_version="${GITHUB_REF_NAME}"
+          fi
           echo "mod_version=${mod_version}" >> "${GITHUB_OUTPUT}"
+          echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+          echo "release_jar=openysm-fabric-${release_version}.jar" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare release jar
+        shell: bash
+        run: |
+          mkdir -p build/release
+          cp "fabric/build/libs/openysm-fabric-${{ steps.properties.outputs.mod_version }}.jar" \
+            "build/release/${{ steps.properties.outputs.release_jar }}"
 
       - name: Upload mod jar
         uses: actions/upload-artifact@v4
         with:
-          name: openysm-fabric-${{ steps.properties.outputs.mod_version }}
-          path: |
-            fabric/build/libs/*.jar
-            !fabric/build/libs/*-sources.jar
-            !fabric/build/libs/*-dev-shadow.jar
+          name: openysm-fabric-${{ steps.properties.outputs.release_version }}
+          path: build/release/${{ steps.properties.outputs.release_jar }}
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: OpenYSM Fabric ${{ github.ref_name }}
-          files: fabric/build/libs/openysm-fabric-${{ steps.properties.outputs.mod_version }}.jar
+          files: build/release/${{ steps.properties.outputs.release_jar }}
