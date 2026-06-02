@@ -75,6 +75,7 @@ public class ClientModelManager {
     private static final WeakHashMap<IGuiWidget, Object> guiWidgets = new WeakHashMap<>();
     private static final SyncStatus syncState = new SyncStatus();
     private static final AtomicInteger offlineModelApplyGeneration = new AtomicInteger();
+    private static volatile UUID lockedLocalPlayerUuid;
 
     public enum SyncState {
         WAITING, LOADING, IDLE, PREPARING, SYNCING
@@ -204,6 +205,7 @@ public class ClientModelManager {
             return;
         }
 
+        lockLocalPlayerUuid(player);
         int generation = offlineModelApplyGeneration.incrementAndGet();
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> applyRememberedOfflineModelIfCurrent(player, generation));
@@ -224,14 +226,73 @@ public class ClientModelManager {
         });
     }
 
+    public static void lockLocalPlayerUuid(LocalPlayer player) {
+        if (player == null) {
+            return;
+        }
+        UUID playerUuid = player.getUUID();
+        UUID lockedUuid = lockedLocalPlayerUuid;
+        if (!playerUuid.equals(lockedUuid)) {
+            lockedLocalPlayerUuid = playerUuid;
+            YesSteveModel.LOGGER.info("[YSM Local] Locked local player UUID: {}", playerUuid);
+        }
+    }
+
+    public static void scheduleRememberedOfflineModelApplyForLockedUuid() {
+        if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
+            return;
+        }
+        if (StringUtils.isBlank(GeneralConfig.OFFLINE_MODEL_ID.get())) {
+            return;
+        }
+
+        int generation = offlineModelApplyGeneration.incrementAndGet();
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.execute(() -> applyRememberedOfflineModelIfLockedUuid(generation));
+        YSMThreadPool.submit(() -> {
+            int[] delays = {250, 500, 1000, 2000, 4000, 8000};
+            for (int delay : delays) {
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                if (offlineModelApplyGeneration.get() != generation) {
+                    return;
+                }
+                minecraft.execute(() -> applyRememberedOfflineModelIfLockedUuid(generation));
+            }
+        });
+    }
+
     private static void applyRememberedOfflineModelIfCurrent(LocalPlayer player, int generation) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (offlineModelApplyGeneration.get() == generation && minecraft.player == player) {
+        if (offlineModelApplyGeneration.get() == generation
+                && minecraft.player == player
+                && isLockedLocalPlayerEntity(player)) {
             applyRememberedOfflineModel(player);
         }
     }
 
+    private static void applyRememberedOfflineModelIfLockedUuid(int generation) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (offlineModelApplyGeneration.get() == generation
+                && player != null
+                && isLockedLocalPlayerEntity(player)) {
+            applyRememberedOfflineModel(player);
+        }
+    }
+
+    public static boolean isLockedLocalPlayerEntity(Entity entity) {
+        UUID lockedUuid = lockedLocalPlayerUuid;
+        return lockedUuid != null && lockedUuid.equals(entity.getUUID());
+    }
+
     public static boolean isLocalPlayerEntity(Entity entity) {
+        if (isLockedLocalPlayerEntity(entity)) {
+            return true;
+        }
         if (entity instanceof LocalPlayer) {
             return true;
         }
@@ -986,8 +1047,9 @@ public class ClientModelManager {
             syncState.setState(SyncState.IDLE);
             LocalPlayer player = Minecraft.getInstance().player;
             if (player != null) {
-                scheduleRememberedOfflineModelApply(player);
+                lockLocalPlayerUuid(player);
             }
+            scheduleRememberedOfflineModelApplyForLockedUuid();
             forEachGuiWidget(IGuiWidget::onSyncComplete);
         });
     }

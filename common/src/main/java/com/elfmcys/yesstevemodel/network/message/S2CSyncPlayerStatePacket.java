@@ -11,8 +11,6 @@ import it.unimi.dsi.fastutil.ints.Int2FloatOpenHashMap;
 import it.unimi.dsi.fastutil.objects.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
@@ -322,10 +320,7 @@ public class S2CSyncPlayerStatePacket {
                         cap.clearModelSwitch();
                     }
                 } else if (isLocalPlayer && (message.flags & 2048) != 0) {
-                    LocalPlayer localPlayer = Minecraft.getInstance().player;
-                    if (localPlayer != null) {
-                        ClientModelManager.scheduleRememberedOfflineModelApply(localPlayer);
-                    }
+                    ClientModelManager.scheduleRememberedOfflineModelApplyForLockedUuid();
                 }
                 if ((message.flags & 4096) != 0) {
                     if (message.isFullSync()) {

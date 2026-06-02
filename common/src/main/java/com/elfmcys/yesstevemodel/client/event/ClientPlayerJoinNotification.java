@@ -37,6 +37,7 @@ public final class ClientPlayerJoinNotification {
         // 多人服务器：立即触发本地模型加载
         // 如果服务端有 YSM，后续收到 S2CVersionCheckPacket 会再次调用 onSyncConnected
         // 那时服务端模型会覆盖本地模型（正常流程）
+        ClientModelManager.lockLocalPlayerUuid(player);
         ClientModelManager.onSyncConnected();
         ClientModelManager.scheduleRememberedOfflineModelApply(player);
         // 60秒后如果服务端仍无 YSM，显示提示
