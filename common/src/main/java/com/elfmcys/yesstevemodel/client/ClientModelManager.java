@@ -199,6 +199,32 @@ public class ClientModelManager {
         PlayerCapability.get(player).ifPresent(cap -> {
             cap.initModelWithTexture(modelId, finalTextureId);
             cap.setForceDisabled(false);
+            cap.clearModelSwitch();
+            cap.enableModel();
+        });
+    }
+
+    public static void enforceRememberedOfflineModel(LocalPlayer player) {
+        if (player == null || !isLockedLocalPlayerEntity(player)) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
+            return;
+        }
+
+        String modelId = GeneralConfig.OFFLINE_MODEL_ID.get();
+        if (StringUtils.isBlank(modelId)) {
+            return;
+        }
+
+        PlayerCapability.get(player).ifPresent(cap -> {
+            String textureId = GeneralConfig.OFFLINE_TEXTURE_ID.get();
+            boolean modelMismatch = !Objects.equals(modelId, cap.getModelId());
+            boolean textureMismatch = StringUtils.isNotBlank(textureId)
+                    && !Objects.equals(textureId, cap.currentTextureName);
+            if (modelMismatch || textureMismatch || cap.isForceDisabled() || cap.isDisabledState()) {
+                applyRememberedOfflineModel(player);
+            }
         });
     }
 

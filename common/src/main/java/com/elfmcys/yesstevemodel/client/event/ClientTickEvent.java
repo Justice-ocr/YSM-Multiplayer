@@ -33,7 +33,8 @@ public final class ClientTickEvent {
         refreshRate = client.getWindow().getRefreshRate();
         LocalPlayer localPlayer = client.player;
         if (localPlayer != null) {
-            PlayerCapability.get(localPlayer).ifPresent(cap -> cap.tickAnimations());
+            ClientModelManager.enforceRememberedOfflineModel(localPlayer);
+            PlayerCapability.get(localPlayer).ifPresent(PlayerCapability::tickAnimations);
         }
     }
 
