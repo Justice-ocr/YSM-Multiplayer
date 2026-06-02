@@ -22,6 +22,10 @@ public class GeneralConfig {
 
     public static ForgeConfigSpec.BooleanValue USE_COMPATIBILITY_RENDERER;
 
+    public static ForgeConfigSpec.BooleanValue USE_NATIVE_RENDERER;
+
+    public static ForgeConfigSpec.BooleanValue RENDER_PROFILING;
+
     public static ForgeConfigSpec.DoubleValue SOUND_VOLUME;
 
     public static ForgeConfigSpec.BooleanValue SHOW_MODEL_ID_FIRST;
@@ -67,6 +71,10 @@ public class GeneralConfig {
         DISABLE_EXTERNAL_FP_ANIM = builder.define("DisableExternalFirstPersonAnim", false);
         builder.comment("If rendering errors occur, try turning on this.");
         USE_COMPATIBILITY_RENDERER = builder.define("UseCompatibilityRenderer", false);
+        builder.comment("Experimental: use native SIMD model renderer when native cache is available.");
+        USE_NATIVE_RENDERER = builder.define("UseNativeRenderer", false);
+        builder.comment("Print model renderer performance statistics to the log.");
+        RENDER_PROFILING = builder.define("RenderProfiling", false);
         builder.comment("The amount of volume when the animation is played.");
         SOUND_VOLUME = builder.defineInRange("SoundVolume", 100.0d, 0.0d, 100.0d);
         builder.comment("Whether to display model ID first in the model selection screen, instead of the model name filled in by the model author.");

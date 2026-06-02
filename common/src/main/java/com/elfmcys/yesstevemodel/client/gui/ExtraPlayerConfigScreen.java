@@ -53,7 +53,9 @@ public class ExtraPlayerConfigScreen extends Screen {
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 16, guiTop + 228, "disable_external_first_person_anim", GeneralConfig.DISABLE_EXTERNAL_FP_ANIM));
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 16, guiTop + 250, "disable_loading_state_screen", LoadingStateConfig.DISABLE_LOADING_STATE_SCREEN));
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 74, "use_compatibility_renderer", GeneralConfig.USE_COMPATIBILITY_RENDERER));
-        addRenderableWidget(new LoadingStateButton(guiLeft + 230, guiTop + 100));
+        addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 96, "use_native_renderer", GeneralConfig.USE_NATIVE_RENDERER));
+        addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 118, "render_profiling", GeneralConfig.RENDER_PROFILING));
+        addRenderableWidget(new LoadingStateButton(guiLeft + 230, guiTop + 144));
     }
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {

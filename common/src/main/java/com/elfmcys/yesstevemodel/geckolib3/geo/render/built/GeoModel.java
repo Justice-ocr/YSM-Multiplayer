@@ -1,5 +1,7 @@
 package com.elfmcys.yesstevemodel.geckolib3.geo.render.built;
 
+import com.elfmcys.yesstevemodel.YesSteveModel;
+import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import com.elfmcys.yesstevemodel.geckolib3.geo.animated.AnimatedGeoModel;
 import com.elfmcys.yesstevemodel.resource.models.GeometryDescription;
@@ -21,6 +23,7 @@ import java.util.*;
  * Bedrock的.geo模型文件
  */
 public class GeoModel {
+    private static boolean nativeInitFailureLogged;
 
     @NotNull
     public final List<GeoBone> bones;
@@ -129,6 +132,7 @@ public class GeoModel {
 
     public void buildNativeCache() {
         if (bakedBones == null || bakedBones.isEmpty()) return;
+        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return;
 
         int totalBones = bakedBones.size();
         int totalCubes = 0;
@@ -176,7 +180,15 @@ public class GeoModel {
         }
 
         buffer.position(0);
-//        this.nativeModelHandle = nInitModelCache(buffer);
+        try {
+            this.nativeModelHandle = nInitModelCache(buffer);
+        } catch (Throwable throwable) {
+            if (!nativeInitFailureLogged) {
+                nativeInitFailureLogged = true;
+                YesSteveModel.LOGGER.warn("[YSM Render] Native model cache is unavailable; falling back to Java renderer", throwable);
+            }
+            this.nativeModelHandle = 0;
+        }
     }
 
     public void freeNativeCache() {
