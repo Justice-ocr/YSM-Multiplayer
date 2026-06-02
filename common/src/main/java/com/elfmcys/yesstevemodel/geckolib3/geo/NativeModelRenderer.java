@@ -41,9 +41,12 @@ public class NativeModelRenderer {
         boolean isPreview = ModelPreviewRenderer.isPreview() || ModelPreviewRenderer.isExtraPlayer();
         boolean profiling = Boolean.TRUE.equals(GeneralConfig.RENDER_PROFILING.get());
         long startNanos = profiling ? System.nanoTime() : 0L;
-        boolean nativePath = Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())
-                && NativeLibLoader.isLoaded()
-                && model.nativeModelHandle != 0;
+        boolean useNativeRenderer = Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())
+                && NativeLibLoader.isLoaded();
+        if (useNativeRenderer && model.nativeModelHandle == 0) {
+            model.buildNativeCache();
+        }
+        boolean nativePath = useNativeRenderer && model.nativeModelHandle != 0;
         int vertexCount;
         if (nativePath) {
             vertexCount = nativeRenderModel(buffer, pose, projectionModelViewMatrix, isCompatMode, model, boneParams, stateBuffer, textureIndex, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);

@@ -120,6 +120,8 @@ public class GeoModel {
 
     public long nativeModelHandle = 0;
 
+    private boolean nativeCacheAttempted;
+
     public static native long nInitModelCache(ByteBuffer buffer);
 
     public static native void nDestroyModelCache(long handle);
@@ -133,6 +135,8 @@ public class GeoModel {
     public void buildNativeCache() {
         if (bakedBones == null || bakedBones.isEmpty()) return;
         if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return;
+        if (nativeCacheAttempted || nativeModelHandle != 0) return;
+        nativeCacheAttempted = true;
 
         int totalBones = bakedBones.size();
         int totalCubes = 0;
@@ -196,6 +200,7 @@ public class GeoModel {
             nDestroyModelCache(nativeModelHandle);
             nativeModelHandle = 0;
         }
+        nativeCacheAttempted = false;
     }
 
     public GeoModel(GeoBone[] geoBones, String[][] strArr, boolean[] zArr, @NotNull GeometryDescription properties, boolean[] zArr2) {
