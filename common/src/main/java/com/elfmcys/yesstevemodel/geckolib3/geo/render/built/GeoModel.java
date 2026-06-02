@@ -127,7 +127,7 @@ public class GeoModel {
     public static native void nDestroyModelCache(long handle);
 
     public static native void nComputeModelVertices(
-            long handle, VertexConsumer vertexConsumer,
+            long handle, Object vertexConsumer,
             float[] matrixTransfer, float[] animTransfer,
             int renderPartMask, int packedLight, int packedOverlay,
             float r, float g, float b, float a);
