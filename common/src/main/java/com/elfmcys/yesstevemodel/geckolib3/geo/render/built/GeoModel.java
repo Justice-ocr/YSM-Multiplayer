@@ -124,6 +124,8 @@ public class GeoModel {
 
     public static native long nInitModelCache(ByteBuffer buffer);
 
+    public static native long nBuildGpuMesh(ByteBuffer buffer, int[] metadata);
+
     public static native void nDestroyModelCache(long handle);
 
     public static native void nComputeModelVertices(
