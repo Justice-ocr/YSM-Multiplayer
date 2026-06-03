@@ -1,5 +1,6 @@
 package com.elfmcys.yesstevemodel.fabric.mixin.client;
 
+import com.elfmcys.yesstevemodel.client.event.PlayerRenderPolicy;
 import com.elfmcys.yesstevemodel.client.event.ReplacePlayerRenderEvent;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
@@ -19,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
@@ -45,14 +47,29 @@ public abstract class PlayerRendererMixin extends LivingEntityRenderer<AbstractC
     @Override
     public void render(PlayerRenderState livingEntityRenderState, PoseStack poseStack, MultiBufferSource multiBufferSource, int packedLight) {
         Player player = ysm$getPlayer(livingEntityRenderState);
-        if (player != null && ReplacePlayerRenderEvent.onRenderPlayerPre(
-                player, livingEntityRenderState,
-                Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true),
-                poseStack, multiBufferSource, packedLight)) {
+        if (player == null) {
+            super.render(livingEntityRenderState, poseStack, multiBufferSource, packedLight);
             return;
         }
 
-        super.render(livingEntityRenderState, poseStack, multiBufferSource, packedLight);
+        boolean attemptedYsm = false;
+        float partialTick = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        List<PlayerRenderPolicy.Layer> renderOrder = PlayerRenderPolicy.getOrder(player);
+        for (PlayerRenderPolicy.Layer layer : renderOrder) {
+            if (layer == PlayerRenderPolicy.Layer.VANILLA) {
+                super.render(livingEntityRenderState, poseStack, multiBufferSource, packedLight);
+                return;
+            } else {
+                attemptedYsm = true;
+                if (ReplacePlayerRenderEvent.renderYsmLayer(layer, player, livingEntityRenderState, partialTick, poseStack, multiBufferSource, packedLight)) {
+                    return;
+                }
+            }
+        }
+
+        if (!attemptedYsm) {
+            super.render(livingEntityRenderState, poseStack, multiBufferSource, packedLight);
+        }
     }
 
     @Unique

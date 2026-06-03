@@ -4,6 +4,7 @@ import com.elfmcys.yesstevemodel.client.gui.button.ConfigCheckBoxForge;
 import com.elfmcys.yesstevemodel.client.gui.button.FlatColorButton;
 import com.elfmcys.yesstevemodel.client.gui.button.LoadingStateButton;
 import com.elfmcys.yesstevemodel.client.gui.button.RangedSliderWidget;
+import com.elfmcys.yesstevemodel.client.gui.button.RenderOrderButton;
 import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.config.ExtraPlayerRenderConfig;
 import com.elfmcys.yesstevemodel.config.LoadingStateConfig;
@@ -56,6 +57,8 @@ public class ExtraPlayerConfigScreen extends Screen {
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 96, "use_native_renderer", GeneralConfig.USE_NATIVE_RENDERER));
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 118, "render_profiling", GeneralConfig.RENDER_PROFILING));
         addRenderableWidget(new LoadingStateButton(guiLeft + 230, guiTop + 144));
+        addRenderableWidget(new RenderOrderButton(guiLeft + 230, guiTop + 172, RenderOrderButton.Target.SELF));
+        addRenderableWidget(new RenderOrderButton(guiLeft + 230, guiTop + 198, RenderOrderButton.Target.OTHER));
     }
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {

@@ -75,6 +75,14 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
 
     private List<String> sortedPackKeys;
 
+    private List<String> sortedLocalModelKeys;
+
+    private List<String> sortedServerModelKeys;
+
+    private List<String> sortedLocalPackKeys;
+
+    private List<String> sortedServerPackKeys;
+
     public int guiLeft;
 
     public int guiTop;
@@ -90,6 +98,8 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
     private static final Object2IntMap<String> pageIndexMap = new Object2IntOpenHashMap();
 
     private static String currentPath = StringPool.EMPTY;
+
+    private static ModelSource currentModelSource = ModelSource.LOCAL;
 
     static {
         for (int i = 0; i < previewHolders.length; i++) {
@@ -228,7 +238,84 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
         this.sortedPackKeys.sort((v0, v1) -> {
             return v0.compareTo(v1);
         });
-        this.maxPage = ((this.filteredModels.size() + this.filteredPacks.size()) - 1) / 10;
+        refreshSourceLists();
+        this.maxPage = Math.max(0, pageCount(getCurrentSourceModelsAndPacksSize(), 10) - 1);
+    }
+
+    private void refreshSourceLists() {
+        this.sortedLocalModelKeys = Lists.newArrayList();
+        this.sortedServerModelKeys = Lists.newArrayList();
+        for (String modelKey : this.sortedModelKeys) {
+            if (ClientModelManager.isServerModel(modelKey)) {
+                this.sortedServerModelKeys.add(modelKey);
+            } else {
+                this.sortedLocalModelKeys.add(modelKey);
+            }
+        }
+
+        this.sortedLocalPackKeys = Lists.newArrayList();
+        this.sortedServerPackKeys = Lists.newArrayList();
+        for (String packKey : this.sortedPackKeys) {
+            if (hasSourceModelUnderPack(packKey, false)) {
+                this.sortedLocalPackKeys.add(packKey);
+            }
+            if (hasSourceModelUnderPack(packKey, true)) {
+                this.sortedServerPackKeys.add(packKey);
+            }
+        }
+    }
+
+    private boolean hasSourceModelUnderPack(String packKey, boolean serverModel) {
+        for (Map.Entry<String, ModelAssembly> entry : ClientModelManager.getModelAssemblyMap().entrySet()) {
+            String modelKey = entry.getKey();
+            if (modelKey.startsWith(packKey)
+                    && ClientModelManager.isServerModel(modelKey) == serverModel
+                    && matchesCurrentCategory(modelKey, entry.getValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean matchesCurrentCategory(String modelKey, ModelAssembly modelAssembly) {
+        Pair<String, String> pair = FileTypeUtil.splitFileNameAndParentDir(modelKey);
+        if (this.hiddenModels.contains(pair.left())) {
+            return false;
+        }
+        LocalPlayer localPlayer = Minecraft.getInstance().player;
+        if (localPlayer == null) {
+            return false;
+        }
+        if (this.category == Category.AUTH) {
+            return AuthModelsCapability.get(localPlayer)
+                    .map(cap -> cap.containsModel(modelKey) || !modelAssembly.getTextureRegistry().isAuthModel())
+                    .orElse(false);
+        }
+        if (this.category == Category.STAR) {
+            return StarModelsCapability.get(localPlayer)
+                    .map(cap -> cap.containsModel(modelKey))
+                    .orElse(false);
+        }
+        return true;
+    }
+
+    private int pageCount(int size, int pageSize) {
+        if (size <= 0) {
+            return 1;
+        }
+        return ((size - 1) / pageSize) + 1;
+    }
+
+    private int getCurrentSourceModelsAndPacksSize() {
+        return getCurrentSourceModelKeys().size() + getCurrentSourcePackKeys().size();
+    }
+
+    private List<String> getCurrentSourceModelKeys() {
+        return currentModelSource == ModelSource.SERVER ? this.sortedServerModelKeys : this.sortedLocalModelKeys;
+    }
+
+    private List<String> getCurrentSourcePackKeys() {
+        return currentModelSource == ModelSource.SERVER ? this.sortedServerPackKeys : this.sortedLocalPackKeys;
     }
 
     private boolean isDirectChild(String str, String str2) {
@@ -400,7 +487,21 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
         addRenderableWidget(new IconButton(this.guiLeft + 426, this.guiTop + 11, 18, 18, 80, 0, button9 -> {
             Minecraft.getInstance().setScreen(new OpenModelFolderScreen(this));
         }).setTooltipText("gui.yes_steve_model.open_model_folder.open"));
-        addRenderableWidget(new FlatColorButton(this.guiLeft + 348, this.guiTop + 36, 140, 18, Component.literal("Upload"), button -> {
+        addRenderableWidget(new FlatColorButton(this.guiLeft + 184, this.guiTop + 36, 82, 18, Component.translatable("gui.yes_steve_model.model.local_models"), button -> {
+            if (currentModelSource != ModelSource.LOCAL) {
+                currentModelSource = ModelSource.LOCAL;
+                resetCurrentPage();
+                init();
+            }
+        }));
+        addRenderableWidget(new FlatColorButton(this.guiLeft + 270, this.guiTop + 36, 108, 18, Component.translatable("gui.yes_steve_model.model.server_models"), button -> {
+            if (currentModelSource != ModelSource.SERVER) {
+                currentModelSource = ModelSource.SERVER;
+                resetCurrentPage();
+                init();
+            }
+        }));
+        addRenderableWidget(new FlatColorButton(this.guiLeft + 426, this.guiTop + 36, 62, 18, Component.translatable("gui.yes_steve_model.model.upload"), button -> {
             Minecraft.getInstance().setScreen(new ModelUploadScreen(this));
         }));
         addRenderableWidget(new FlatColorButton(this.guiLeft + 260, this.guiTop + 244, 52, 14, Component.translatable("gui.yes_steve_model.pre_page"), button10 -> {
@@ -421,12 +522,16 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
             return;
         }
         Optional<AuthModelsCapability> capability = AuthModelsCapability.get(this.minecraft.player);
+        addModelSourceGrid(this.guiLeft + 184, getCurrentSourcePackKeys(), getCurrentSourceModelKeys(), capability);
+    }
+
+    private void addModelSourceGrid(int baseX, List<String> packKeys, List<String> modelKeys, Optional<AuthModelsCapability> capability) {
         for (int i = 0; i < 10; i++) {
             int slotIndex = i + (getCurrentPage() * 10);
-            int slotX = this.guiLeft + 184 + (55 * (i % 5));
+            int slotX = baseX + (55 * (i % 5));
             int slotY = this.guiTop + 58 + (93 * (i / 5));
-            if (slotIndex < this.sortedPackKeys.size()) {
-                String str = this.sortedPackKeys.get(slotIndex);
+            if (slotIndex < packKeys.size()) {
+                String str = packKeys.get(slotIndex);
                 getPackData(str).ifPresent(value2 -> {
                     addRenderableWidget(new PackIconButton(slotX, slotY, 52, 90, value2, button12 -> {
                         currentPath = str;
@@ -435,9 +540,9 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
                     }));
                 });
             }
-            int size = slotIndex - this.sortedPackKeys.size();
-            if (0 <= size && size < this.sortedModelKeys.size()) {
-                String str2 = this.sortedModelKeys.get(size);
+            int size = slotIndex - packKeys.size();
+            if (0 <= size && size < modelKeys.size()) {
+                String str2 = modelKeys.get(size);
                 PlayerPreviewEntity previewEntity = previewHolders[i];
                 previewEntity.resetModel();
                 capability.ifPresent(value3 -> {
@@ -508,6 +613,9 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
         guiGraphics.fill(this.guiLeft + 8, this.guiTop + 42, this.guiLeft + 168, this.guiTop + 232, PANEL_SOFT);
         guiGraphics.fill(this.guiLeft + 176, this.guiTop + 42, this.guiLeft + 492, this.guiTop + 232, PANEL_SOFT);
         guiGraphics.fill(this.guiLeft + 176, this.guiTop + 236, this.guiLeft + 492, this.guiTop + 260, PANEL_DARK);
+        int activeTabLeft = currentModelSource == ModelSource.SERVER ? this.guiLeft + 270 : this.guiLeft + 184;
+        int activeTabRight = currentModelSource == ModelSource.SERVER ? this.guiLeft + 378 : this.guiLeft + 266;
+        guiGraphics.fill(activeTabLeft, this.guiTop + 55, activeTabRight, this.guiTop + 57, ACCENT);
         guiGraphics.drawString(this.font, "YSM Models", this.guiLeft + 14, this.guiTop + 4, TEXT, false);
         guiGraphics.drawString(this.font, Component.literal(category.name()).withStyle(ChatFormatting.GRAY), this.guiLeft + 184, this.guiTop + 34, MUTED, false);
     }
@@ -728,5 +836,10 @@ public class PlayerModelScreen extends Screen implements IGuiWidget {
         ALL,
         AUTH,
         STAR
+    }
+
+    private enum ModelSource {
+        LOCAL,
+        SERVER
     }
 }

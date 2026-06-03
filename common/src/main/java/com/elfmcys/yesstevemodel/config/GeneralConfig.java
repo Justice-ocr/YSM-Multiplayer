@@ -26,6 +26,10 @@ public class GeneralConfig {
 
     public static ForgeConfigSpec.BooleanValue RENDER_PROFILING;
 
+    public static ForgeConfigSpec.ConfigValue<String> SELF_PLAYER_RENDER_ORDER;
+
+    public static ForgeConfigSpec.ConfigValue<String> OTHER_PLAYER_RENDER_ORDER;
+
     public static ForgeConfigSpec.DoubleValue SOUND_VOLUME;
 
     public static ForgeConfigSpec.BooleanValue SHOW_MODEL_ID_FIRST;
@@ -75,6 +79,10 @@ public class GeneralConfig {
         USE_NATIVE_RENDERER = builder.define("UseNativeRenderer", false);
         builder.comment("Print model renderer performance statistics to the log.");
         RENDER_PROFILING = builder.define("RenderProfiling", false);
+        builder.comment("Comma separated self player render order. Supported values: VANILLA, LOCAL_YSM, SERVER_YSM.");
+        SELF_PLAYER_RENDER_ORDER = builder.define("SelfPlayerRenderOrder", "LOCAL_YSM");
+        builder.comment("Comma separated other player render order. Supported values: VANILLA, LOCAL_YSM, SERVER_YSM.");
+        OTHER_PLAYER_RENDER_ORDER = builder.define("OtherPlayerRenderOrder", "SERVER_YSM");
         builder.comment("The amount of volume when the animation is played.");
         SOUND_VOLUME = builder.defineInRange("SoundVolume", 100.0d, 0.0d, 100.0d);
         builder.comment("Whether to display model ID first in the model selection screen, instead of the model name filled in by the model author.");

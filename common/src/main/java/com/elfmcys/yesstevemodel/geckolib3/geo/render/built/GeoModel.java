@@ -91,6 +91,8 @@ public class GeoModel {
 
     public List<BakedBone> bakedBones;
 
+    private FlattenedRenderData flattenedRenderData;
+
     public static class BakedBone {
         public String name;
         public boolean glow;
@@ -112,6 +114,27 @@ public class GeoModel {
         public Vector3f[] positions = new Vector3f[4];
         public Vector2f[] uvs = new Vector2f[4];
         public Vector3f normal;
+    }
+
+    public static class FlattenedRenderData {
+        public final List<BakedBone> source;
+        public final FlattenedBone[] bones;
+
+        private FlattenedRenderData(List<BakedBone> source, FlattenedBone[] bones) {
+            this.source = source;
+            this.bones = bones;
+        }
+    }
+
+    public static class FlattenedBone {
+        public boolean glow;
+        public int partMask;
+        public boolean hasCullable;
+        public int quadCount;
+        public boolean[] cullable;
+        public float[] positions;
+        public float[] uvs;
+        public float[] normals;
     }
 
 //    static {
@@ -218,6 +241,71 @@ public class GeoModel {
             nativeModelHandle = 0;
         }
         nativeCacheAttempted = false;
+    }
+
+    public FlattenedRenderData getFlattenedRenderData() {
+        if (bakedBones == null || bakedBones.isEmpty()) return null;
+        if (flattenedRenderData == null || flattenedRenderData.source != bakedBones || flattenedRenderData.bones.length != bakedBones.size()) {
+            flattenedRenderData = buildFlattenedRenderData();
+        }
+        return flattenedRenderData;
+    }
+
+    private FlattenedRenderData buildFlattenedRenderData() {
+        FlattenedBone[] flattenedBones = new FlattenedBone[bakedBones.size()];
+        for (int i = 0; i < bakedBones.size(); i++) {
+            BakedBone sourceBone = bakedBones.get(i);
+            FlattenedBone flattenedBone = new FlattenedBone();
+            flattenedBone.glow = sourceBone.glow;
+            flattenedBone.partMask = sourceBone.partMask;
+
+            int quadCount = 0;
+            for (BakedCube cube : sourceBone.cubes) {
+                quadCount += cube.quads.size();
+            }
+
+            flattenedBone.quadCount = quadCount;
+            flattenedBone.cullable = new boolean[quadCount];
+            flattenedBone.positions = new float[quadCount * 12];
+            flattenedBone.uvs = new float[quadCount * 8];
+            flattenedBone.normals = new float[quadCount * 3];
+
+            int quadIndex = 0;
+            for (BakedCube cube : sourceBone.cubes) {
+                for (BakedQuad quad : cube.quads) {
+                    flattenedBone.cullable[quadIndex] = cube.cullable;
+                    if (cube.cullable) {
+                        flattenedBone.hasCullable = true;
+                    }
+
+                    int positionOffset = quadIndex * 12;
+                    for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
+                        Vector3f position = quad.positions[vertexIndex];
+                        int offset = positionOffset + vertexIndex * 3;
+                        flattenedBone.positions[offset] = position.x();
+                        flattenedBone.positions[offset + 1] = position.y();
+                        flattenedBone.positions[offset + 2] = position.z();
+                    }
+
+                    int uvOffset = quadIndex * 8;
+                    for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
+                        Vector2f uv = quad.uvs[vertexIndex];
+                        int offset = uvOffset + vertexIndex * 2;
+                        flattenedBone.uvs[offset] = uv.x();
+                        flattenedBone.uvs[offset + 1] = uv.y();
+                    }
+
+                    int normalOffset = quadIndex * 3;
+                    flattenedBone.normals[normalOffset] = quad.normal.x();
+                    flattenedBone.normals[normalOffset + 1] = quad.normal.y();
+                    flattenedBone.normals[normalOffset + 2] = quad.normal.z();
+
+                    quadIndex++;
+                }
+            }
+            flattenedBones[i] = flattenedBone;
+        }
+        return new FlattenedRenderData(bakedBones, flattenedBones);
     }
 
     public GeoModel(GeoBone[] geoBones, String[][] strArr, boolean[] zArr, @NotNull GeometryDescription properties, boolean[] zArr2) {

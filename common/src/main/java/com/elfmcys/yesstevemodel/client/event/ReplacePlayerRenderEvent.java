@@ -22,7 +22,15 @@ public class ReplacePlayerRenderEvent {
     }
 
     public static boolean onRenderPlayerPre(Player entity, PlayerRenderState renderState, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
+        return renderYsmLayer(PlayerRenderPolicy.isSelf(entity) ? PlayerRenderPolicy.Layer.LOCAL_YSM : PlayerRenderPolicy.Layer.SERVER_YSM,
+                entity, renderState, partialTick, poseStack, bufferSource, packedLight);
+    }
+
+    public static boolean renderYsmLayer(PlayerRenderPolicy.Layer layer, Player entity, PlayerRenderState renderState, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
         if (!YesSteveModel.isAvailable()) {
+            return false;
+        }
+        if (!PlayerRenderPolicy.isYsmLayerForPlayer(layer, entity)) {
             return false;
         }
         LocalPlayer localPlayer = Minecraft.getInstance().player;
@@ -41,8 +49,8 @@ public class ReplacePlayerRenderEvent {
                         || RealCameraCompat.isActive()
                         || GeneralConfig.DISABLE_EXTERNAL_FP_ANIM.get().booleanValue()
                         || !PlayerAnimatorCompat.isPlayerAnimated(localPlayer)) {
-                    cancelled[0] = true;
                     if (cap.getCurrentModel() != null) {
+                        cancelled[0] = true;
                         RendererManager.getPlayerRenderer().render(entity, renderState, entity.getYRot(), ModelPreviewRenderer.isPreview() ? 1.0f : partialTick, poseStack, bufferSource, packedLight);
                     }
                 }

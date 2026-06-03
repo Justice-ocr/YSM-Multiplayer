@@ -7,7 +7,6 @@ import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer;
 import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.geckolib3.geo.render.built.*;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -39,7 +38,6 @@ public class NativeModelRenderer {
     public static void renderMesh(VertexConsumer buffer, PoseStack.Pose pose, GeoModel model, float[] boneParams, float[] stateBuffer, int textureIndex, int renderPartMask, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
         OculusCompat.updatePBRState();
         boolean isCompatMode = OptiFineDetector.isOptifinePresent() || GeneralConfig.USE_COMPATIBILITY_RENDERER.get();
-        net.minecraft.client.Minecraft.getInstance().gameRenderer.getProjectionMatrix(net.minecraft.client.Minecraft.getInstance().options.fov().get()).mul(RenderSystem.getModelViewMatrix(), projectionModelViewMatrix);
         boolean isPreview = ModelPreviewRenderer.isPreview() || ModelPreviewRenderer.isExtraPlayer();
         boolean profiling = Boolean.TRUE.equals(GeneralConfig.RENDER_PROFILING.get());
         long startNanos = profiling ? System.nanoTime() : 0L;
@@ -75,11 +73,13 @@ public class NativeModelRenderer {
             boolean isPreview) {
 
         if (mesh.bakedBones == null || mesh.bakedBones.isEmpty()) return 0;
+        GeoModel.FlattenedRenderData flattenedRenderData = mesh.getFlattenedRenderData();
+        if (flattenedRenderData == null) return 0;
 
         // TODO: 修復GC壓力
         Matrix4f rootPoseMat = pose.pose();
         Matrix3f rootNormalMC = pose.normal();
-        Matrix4f projMat = net.minecraft.client.Minecraft.getInstance().gameRenderer.getProjectionMatrix(net.minecraft.client.Minecraft.getInstance().options.fov().get());
+        Matrix4f projMat = null;
 
         RenderScratch scratch = RENDER_SCRATCH.get();
         scratch.prepare(mesh.bakedBones.size());
@@ -94,14 +94,20 @@ public class NativeModelRenderer {
                 continue;
             }
 
-            GeoModel.BakedBone bone = mesh.bakedBones.get(i);
+            GeoModel.FlattenedBone bone = flattenedRenderData.bones[i];
             if (renderPartMask != 0 && bone.partMask != renderPartMask && bone.partMask != 3) {
                 continue;
             }
 
             Matrix4f localBoneMat = scratch.boneLocalTransforms[i];
             scratch.globalBoneMat.set(rootPoseMat).mul(localBoneMat);
-            scratch.projBoneMat.set(projMat).mul(scratch.globalBoneMat);
+            boolean canCullBone = !isPreview && bone.hasCullable;
+            if (canCullBone) {
+                if (projMat == null) {
+                    projMat = net.minecraft.client.Minecraft.getInstance().gameRenderer.getProjectionMatrix(net.minecraft.client.Minecraft.getInstance().options.fov().get());
+                }
+                scratch.projBoneMat.set(projMat).mul(scratch.globalBoneMat);
+            }
 
             // 法線全域矩陣
             localBoneMat.normal(scratch.localNormalMat);
@@ -109,33 +115,33 @@ public class NativeModelRenderer {
 
             int currentPackedLight = bone.glow ? LightTexture.pack(15, 15) : packedLight;
 
-            for (GeoModel.BakedCube cube : bone.cubes) {
-                for (GeoModel.BakedQuad quad : cube.quads) {
-                    // Skip CPU back-face culling in preview/GUI contexts: the cached
-                    // projMat above is the world perspective matrix, but PIP rendering
-                    // (inventory, paper-doll, preview screens) uses an orthographic
-                    // projection set on RenderSystem at draw time. Culling against the
-                    // wrong matrix drops visible quads.
-                    if (cube.cullable && !isPreview) {
-                        scratch.p1.set(quad.positions[0].x(), quad.positions[0].y(), quad.positions[0].z(), 1.0f).mul(scratch.projBoneMat);
-                        scratch.p2.set(quad.positions[1].x(), quad.positions[1].y(), quad.positions[1].z(), 1.0f).mul(scratch.projBoneMat);
-                        scratch.p3.set(quad.positions[2].x(), quad.positions[2].y(), quad.positions[2].z(), 1.0f).mul(scratch.projBoneMat);
-                        float det = scratch.p1.x() * (scratch.p2.y() * scratch.p3.w() - scratch.p3.y() * scratch.p2.w()) - scratch.p2.x() * (scratch.p1.y() * scratch.p3.w() - scratch.p3.y() * scratch.p1.w()) + scratch.p3.x() * (scratch.p1.y() * scratch.p2.w() - scratch.p2.y() * scratch.p1.w());
-                        if (det <= 0.0f) {
-                            continue;
-                        }
+            for (int quadIndex = 0; quadIndex < bone.quadCount; quadIndex++) {
+                int positionOffset = quadIndex * 12;
+                if (canCullBone && bone.cullable[quadIndex]) {
+                    scratch.p1.set(bone.positions[positionOffset], bone.positions[positionOffset + 1], bone.positions[positionOffset + 2], 1.0f).mul(scratch.projBoneMat);
+                    scratch.p2.set(bone.positions[positionOffset + 3], bone.positions[positionOffset + 4], bone.positions[positionOffset + 5], 1.0f).mul(scratch.projBoneMat);
+                    scratch.p3.set(bone.positions[positionOffset + 6], bone.positions[positionOffset + 7], bone.positions[positionOffset + 8], 1.0f).mul(scratch.projBoneMat);
+                    float det = scratch.p1.x() * (scratch.p2.y() * scratch.p3.w() - scratch.p3.y() * scratch.p2.w()) - scratch.p2.x() * (scratch.p1.y() * scratch.p3.w() - scratch.p3.y() * scratch.p1.w()) + scratch.p3.x() * (scratch.p1.y() * scratch.p2.w() - scratch.p2.y() * scratch.p1.w());
+                    if (det <= 0.0f) {
+                        continue;
                     }
-                    scratch.tempNorm.set(quad.normal).mul(scratch.globalNormalMat).normalize();
-                    for (int v = 0; v < 4; v++) {
-                        scratch.tempPos.set(quad.positions[v].x(), quad.positions[v].y(), quad.positions[v].z(), 1.0f).mul(scratch.globalBoneMat);
-                        vertexConsumer.addVertex(scratch.tempPos.x(), scratch.tempPos.y(), scratch.tempPos.z())
-                                .setColor(r, g, b, a)
-                                .setUv(quad.uvs[v].x(), quad.uvs[v].y())
-                                .setOverlay(packedOverlay)
-                                .setLight(currentPackedLight)
-                                .setNormal(scratch.tempNorm.x(), scratch.tempNorm.y(), scratch.tempNorm.z());
-                        vertexCount++;
-                    }
+                }
+
+                int normalOffset = quadIndex * 3;
+                scratch.tempNorm.set(bone.normals[normalOffset], bone.normals[normalOffset + 1], bone.normals[normalOffset + 2]).mul(scratch.globalNormalMat).normalize();
+
+                int uvOffset = quadIndex * 8;
+                for (int v = 0; v < 4; v++) {
+                    int vertexPositionOffset = positionOffset + v * 3;
+                    scratch.tempPos.set(bone.positions[vertexPositionOffset], bone.positions[vertexPositionOffset + 1], bone.positions[vertexPositionOffset + 2], 1.0f).mul(scratch.globalBoneMat);
+                    int vertexUvOffset = uvOffset + v * 2;
+                    vertexConsumer.addVertex(scratch.tempPos.x(), scratch.tempPos.y(), scratch.tempPos.z())
+                            .setColor(r, g, b, a)
+                            .setUv(bone.uvs[vertexUvOffset], bone.uvs[vertexUvOffset + 1])
+                            .setOverlay(packedOverlay)
+                            .setLight(currentPackedLight)
+                            .setNormal(scratch.tempNorm.x(), scratch.tempNorm.y(), scratch.tempNorm.z());
+                    vertexCount++;
                 }
             }
         }
