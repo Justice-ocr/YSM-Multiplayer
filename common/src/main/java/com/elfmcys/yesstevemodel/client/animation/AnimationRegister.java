@@ -32,7 +32,7 @@ public class AnimationRegister {
             }
             return player.getAbilities().flying;
         });
-        register("elytra_fly", Priority.HIGH, (player, event) -> player.getPose() == Pose.FALL_FLYING && player.isFallFlying());
+        register("elytra_fly", Priority.HIGH, (player, event) -> isFallFlying(player));
         register("swim_stand", Priority.NORMAL, (player, event) -> player.isInWater() && !player.onGround());
         register("attacked", ILoopType.EDefaultLoopTypes.PLAY_ONCE, 2, (player, event) -> player.hurtTime > 0);
         register("jump", Priority.NORMAL, (player, event) -> !player.onGround() && !player.isInWater());
@@ -53,5 +53,9 @@ public class AnimationRegister {
 
     private static float getVerticalSpeed(Player player) {
         return 20.0f * ((float) (player.position().y - player.yo));
+    }
+
+    private static boolean isFallFlying(Player player) {
+        return player.isFallFlying() || player.getPose() == Pose.FALL_FLYING;
     }
 }

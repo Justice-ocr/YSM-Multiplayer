@@ -1,6 +1,7 @@
 package com.elfmcys.yesstevemodel.client.gui;
 
 import com.elfmcys.yesstevemodel.client.event.AnimationLockEvent;
+import com.elfmcys.yesstevemodel.client.ClientModelManager;
 import com.elfmcys.yesstevemodel.client.gui.custom.ExtraAnimationButtons;
 import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
@@ -535,18 +536,18 @@ public class AnimationRouletteScreen extends Screen {
 
     private void playAnimation(String str) {
         LocalPlayer localPlayer = Minecraft.getInstance().player;
-        if (NetworkHandler.isClientConnected()) {
-            Pair<String, Integer> pairPeekLast = navigationStack.peekLast();
-            String str2 = StringPool.EMPTY;
-            if (pairPeekLast != null && StringUtils.isNotBlank(pairPeekLast.getLeft())) {
-                str2 = pairPeekLast.getLeft();
+        Entity entity = this.animatableModel.getEntity();
+        if (entity instanceof Player) {
+            if (localPlayer != null) {
+                PlayerCapability.get(localPlayer).ifPresent(cap -> {
+                    cap.requestModelSwitch(str);
+                    if (NetworkHandler.isClientConnected() && ClientModelManager.isServerModel(cap.getModelId())) {
+                        NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, getCurrentCategory()));
+                    }
+                });
             }
-            Entity entity = this.animatableModel.getEntity();
-            if (entity instanceof Player) {
-                NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, str2));
-            } else {
-                NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, str2, entity.getId()));
-            }
+        } else if (NetworkHandler.isClientConnected()) {
+            NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, getCurrentCategory(), entity.getId()));
         } else if (localPlayer != null) {
             PlayerCapability.get(localPlayer).ifPresent(cap -> {
                 cap.requestModelSwitch(str);
@@ -556,6 +557,14 @@ public class AnimationRouletteScreen extends Screen {
             localPlayer.displayClientMessage(Component.translatable("message.yes_steve_model.model.animation_roulette.play", str), false);
         }
         Minecraft.getInstance().setScreen(null);
+    }
+
+    private String getCurrentCategory() {
+        Pair<String, Integer> pairPeekLast = navigationStack.peekLast();
+        if (pairPeekLast != null && StringUtils.isNotBlank(pairPeekLast.getLeft())) {
+            return pairPeekLast.getLeft();
+        }
+        return StringPool.EMPTY;
     }
 
     private void navigateToSubmenu(String str) {

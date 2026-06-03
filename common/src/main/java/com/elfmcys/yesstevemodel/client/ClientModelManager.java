@@ -208,6 +208,17 @@ public class ClientModelManager {
 
         String finalTextureId = textureId;
         PlayerCapability.get(player).ifPresent(cap -> {
+            boolean modelMatches = Objects.equals(modelId, cap.getModelId());
+            boolean textureMatches = Objects.equals(finalTextureId, cap.currentTextureName);
+            if (cap.isModelSwitching() && modelMatches) {
+                if (cap.isForceDisabled()) {
+                    cap.setForceDisabled(false);
+                }
+                return;
+            }
+            if (modelMatches && textureMatches && !cap.isForceDisabled()) {
+                return;
+            }
             cap.initModelWithTexture(modelId, finalTextureId);
             cap.setForceDisabled(false);
             cap.clearModelSwitch();
@@ -234,7 +245,8 @@ public class ClientModelManager {
             boolean modelMismatch = !Objects.equals(modelId, cap.getModelId());
             boolean textureMismatch = StringUtils.isNotBlank(textureId)
                     && !Objects.equals(textureId, cap.currentTextureName);
-            if (modelMismatch || textureMismatch || cap.isForceDisabled() || cap.isDisabledState()) {
+            if (!cap.isModelSwitching()
+                    && (modelMismatch || textureMismatch || cap.isForceDisabled() || cap.isDisabledState())) {
                 applyRememberedOfflineModel(player);
             }
         });

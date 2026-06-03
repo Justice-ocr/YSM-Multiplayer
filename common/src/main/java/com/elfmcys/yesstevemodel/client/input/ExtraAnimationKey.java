@@ -2,6 +2,7 @@ package com.elfmcys.yesstevemodel.client.input;
 
 import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
+import com.elfmcys.yesstevemodel.client.ClientModelManager;
 import com.elfmcys.yesstevemodel.client.event.AnimationLockEvent;
 import com.elfmcys.yesstevemodel.client.gui.AnimationRouletteScreen;
 import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
@@ -70,7 +71,10 @@ public final class ExtraAnimationKey {
                     if (map.size() > index) {
                         String rouletteKey = map.getKeyAt(index);
                         if ("#return".equals(rouletteKey)) {
-                            NetworkHandler.sendToServer(C2SPlayAnimationPacket.createDefault());
+                            cap.clearModelSwitch();
+                            if (NetworkHandler.isClientConnected() && ClientModelManager.isServerModel(cap.getModelId())) {
+                                NetworkHandler.sendToServer(C2SPlayAnimationPacket.createDefault());
+                            }
                             return;
                         }
                         if (rouletteKey.startsWith("#") && modelProperties.getExtraAnimationClassify().containsKey(rouletteKey.substring(1))) {
@@ -78,7 +82,10 @@ public final class ExtraAnimationKey {
                             Minecraft.getInstance().setScreen(new AnimationRouletteScreen(modelProperties.getExtraAnimationButtons(), modelProperties.getExtraAnimationClassify(), modelAssembly, cap));
                             return;
                         }
-                        NetworkHandler.sendToServer(new C2SPlayAnimationPacket(index, StringPool.EMPTY));
+                        cap.requestModelSwitch(rouletteKey);
+                        if (NetworkHandler.isClientConnected() && ClientModelManager.isServerModel(cap.getModelId())) {
+                            NetworkHandler.sendToServer(new C2SPlayAnimationPacket(index, StringPool.EMPTY));
+                        }
                     }
                 });
                 return;

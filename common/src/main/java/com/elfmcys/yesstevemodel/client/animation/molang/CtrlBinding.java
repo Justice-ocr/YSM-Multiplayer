@@ -50,7 +50,7 @@ public class CtrlBinding extends ContextBinding {
         registerLivingEntityState("ladder_stillness", Priority.HIGHEST, entity -> entity.onClimbable() && getVerticalVelocity(entity) == 0.0f);
         registerLivingEntityState("ladder_down", Priority.HIGHEST, entity -> entity.onClimbable() && getVerticalVelocity(entity) < 0.0f);
         registerState("fly", Priority.HIGH, CtrlBinding::isFlying);
-        registerLivingEntityState("elytra_fly", Priority.HIGH, entity -> entity.getPose() == Pose.FALL_FLYING && entity.isFallFlying());
+        registerLivingEntityState("elytra_fly", Priority.HIGH, CtrlBinding::isFallFlying);
         registerLivingEntityState("swim_stand", Priority.NORMAL, entity -> entity.isInWater() && !entity.onGround());
         registerLivingEntityState("attacked", Priority.NORMAL, entity -> entity.hurtTime > 0);
         registerLivingEntityState("jump", Priority.NORMAL, entity -> !entity.onGround() && !entity.isInWater());
@@ -150,6 +150,10 @@ public class CtrlBinding extends ContextBinding {
 
     private static float getVerticalVelocity(LivingEntity livingEntity) {
         return 20.0f * ((float) (livingEntity.position().y - livingEntity.yo));
+    }
+
+    private static boolean isFallFlying(LivingEntity livingEntity) {
+        return livingEntity.isFallFlying() || livingEntity.getPose() == Pose.FALL_FLYING;
     }
 
     private static boolean isFlying(IContext<LivingEntity> context) {

@@ -98,6 +98,7 @@ public class GeoModel {
         public boolean glow;
         public int parentIdx = -1;
         public float pivotX, pivotY, pivotZ;
+        public float pivotX16, pivotY16, pivotZ16;
         public float rotX, rotY, rotZ;
         public List<BakedCube> cubes = new ObjectArrayList<>();
         public int partMask;
@@ -118,11 +119,31 @@ public class GeoModel {
 
     public static class FlattenedRenderData {
         public final List<BakedBone> source;
+        public final BakedBone[] sourceArray;
         public final FlattenedBone[] bones;
+        private final int[][] renderBoneIndicesByMask;
+        private final int[][] computeBoneIndicesByMask;
 
-        private FlattenedRenderData(List<BakedBone> source, FlattenedBone[] bones) {
+        private FlattenedRenderData(List<BakedBone> source, BakedBone[] sourceArray, FlattenedBone[] bones, int[][] renderBoneIndicesByMask, int[][] computeBoneIndicesByMask) {
             this.source = source;
+            this.sourceArray = sourceArray;
             this.bones = bones;
+            this.renderBoneIndicesByMask = renderBoneIndicesByMask;
+            this.computeBoneIndicesByMask = computeBoneIndicesByMask;
+        }
+
+        public int[] getRenderBoneIndices(int renderPartMask) {
+            if (0 <= renderPartMask && renderPartMask < this.renderBoneIndicesByMask.length) {
+                return this.renderBoneIndicesByMask[renderPartMask];
+            }
+            return this.renderBoneIndicesByMask[0];
+        }
+
+        public int[] getComputeBoneIndices(int renderPartMask) {
+            if (0 <= renderPartMask && renderPartMask < this.computeBoneIndicesByMask.length) {
+                return this.computeBoneIndicesByMask[renderPartMask];
+            }
+            return this.computeBoneIndicesByMask[0];
         }
     }
 
@@ -131,10 +152,12 @@ public class GeoModel {
         public int partMask;
         public boolean hasCullable;
         public int quadCount;
+        public int normalCount;
         public boolean[] cullable;
+        public int[] normalIndices;
         public float[] positions;
         public float[] uvs;
-        public float[] normals;
+        public float[] uniqueNormals;
     }
 
 //    static {
@@ -253,6 +276,8 @@ public class GeoModel {
 
     private FlattenedRenderData buildFlattenedRenderData() {
         FlattenedBone[] flattenedBones = new FlattenedBone[bakedBones.size()];
+        int[][] renderBoneIndexBuffers = new int[4][bakedBones.size()];
+        int[] renderBoneIndexCounts = new int[4];
         for (int i = 0; i < bakedBones.size(); i++) {
             BakedBone sourceBone = bakedBones.get(i);
             FlattenedBone flattenedBone = new FlattenedBone();
@@ -266,9 +291,11 @@ public class GeoModel {
 
             flattenedBone.quadCount = quadCount;
             flattenedBone.cullable = new boolean[quadCount];
+            flattenedBone.normalIndices = new int[quadCount];
             flattenedBone.positions = new float[quadCount * 12];
             flattenedBone.uvs = new float[quadCount * 8];
-            flattenedBone.normals = new float[quadCount * 3];
+            float[] uniqueNormals = new float[quadCount * 3];
+            int uniqueNormalCount = 0;
 
             int quadIndex = 0;
             for (BakedCube cube : sourceBone.cubes) {
@@ -295,17 +322,87 @@ public class GeoModel {
                         flattenedBone.uvs[offset + 1] = uv.y();
                     }
 
-                    int normalOffset = quadIndex * 3;
-                    flattenedBone.normals[normalOffset] = quad.normal.x();
-                    flattenedBone.normals[normalOffset + 1] = quad.normal.y();
-                    flattenedBone.normals[normalOffset + 2] = quad.normal.z();
+                    int normalIndex = findOrAddNormal(uniqueNormals, uniqueNormalCount, quad.normal);
+                    if (normalIndex == uniqueNormalCount) {
+                        uniqueNormalCount++;
+                    }
+                    flattenedBone.normalIndices[quadIndex] = normalIndex;
 
                     quadIndex++;
                 }
             }
+            flattenedBone.normalCount = uniqueNormalCount;
+            flattenedBone.uniqueNormals = Arrays.copyOf(uniqueNormals, uniqueNormalCount * 3);
             flattenedBones[i] = flattenedBone;
+            if (quadCount > 0) {
+                addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 0, i);
+                if (sourceBone.partMask == 1 || sourceBone.partMask == 3) {
+                    addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 1, i);
+                }
+                if (sourceBone.partMask == 2 || sourceBone.partMask == 3) {
+                    addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 2, i);
+                }
+                if (sourceBone.partMask == 3) {
+                    addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 3, i);
+                }
+            }
         }
-        return new FlattenedRenderData(bakedBones, flattenedBones);
+        int[][] renderBoneIndicesByMask = new int[renderBoneIndexBuffers.length][];
+        int[][] computeBoneIndicesByMask = new int[renderBoneIndexBuffers.length][];
+        BakedBone[] sourceArray = bakedBones.toArray(new BakedBone[0]);
+        for (BakedBone bone : sourceArray) {
+            bone.pivotX16 = bone.pivotX * 0.0625f;
+            bone.pivotY16 = bone.pivotY * 0.0625f;
+            bone.pivotZ16 = bone.pivotZ * 0.0625f;
+        }
+        for (int mask = 0; mask < renderBoneIndexBuffers.length; mask++) {
+            renderBoneIndicesByMask[mask] = Arrays.copyOf(renderBoneIndexBuffers[mask], renderBoneIndexCounts[mask]);
+            computeBoneIndicesByMask[mask] = buildComputeBoneIndices(sourceArray, renderBoneIndicesByMask[mask]);
+        }
+        return new FlattenedRenderData(bakedBones, sourceArray, flattenedBones, renderBoneIndicesByMask, computeBoneIndicesByMask);
+    }
+
+    private static void addRenderBoneIndex(int[][] buffers, int[] counts, int mask, int boneIndex) {
+        buffers[mask][counts[mask]++] = boneIndex;
+    }
+
+    private static int[] buildComputeBoneIndices(BakedBone[] bones, int[] renderBoneIndices) {
+        boolean[] added = new boolean[bones.length];
+        int[] indices = new int[bones.length];
+        int count = 0;
+        for (int renderBoneIndex : renderBoneIndices) {
+            count = addBoneWithParents(bones, renderBoneIndex, added, indices, count);
+        }
+        return Arrays.copyOf(indices, count);
+    }
+
+    private static int addBoneWithParents(BakedBone[] bones, int boneIndex, boolean[] added, int[] indices, int count) {
+        if (boneIndex == -1 || added[boneIndex]) {
+            return count;
+        }
+        count = addBoneWithParents(bones, bones[boneIndex].parentIdx, added, indices, count);
+        added[boneIndex] = true;
+        indices[count++] = boneIndex;
+        return count;
+    }
+
+    private static int findOrAddNormal(float[] uniqueNormals, int normalCount, Vector3f normal) {
+        int normalX = Float.floatToIntBits(normal.x());
+        int normalY = Float.floatToIntBits(normal.y());
+        int normalZ = Float.floatToIntBits(normal.z());
+        for (int i = 0; i < normalCount; i++) {
+            int offset = i * 3;
+            if (Float.floatToIntBits(uniqueNormals[offset]) == normalX
+                    && Float.floatToIntBits(uniqueNormals[offset + 1]) == normalY
+                    && Float.floatToIntBits(uniqueNormals[offset + 2]) == normalZ) {
+                return i;
+            }
+        }
+        int offset = normalCount * 3;
+        uniqueNormals[offset] = normal.x();
+        uniqueNormals[offset + 1] = normal.y();
+        uniqueNormals[offset + 2] = normal.z();
+        return normalCount;
     }
 
     public GeoModel(GeoBone[] geoBones, String[][] strArr, boolean[] zArr, @NotNull GeometryDescription properties, boolean[] zArr2) {

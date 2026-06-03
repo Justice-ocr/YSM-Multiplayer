@@ -7,26 +7,22 @@ import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer;
 import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.geckolib3.geo.render.built.*;
-import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.LightTexture;
 import org.joml.*;
-import org.lwjgl.system.MemoryUtil;
 import rip.ysm.compat.oculus.OculusCompat;
-import rip.ysm.compat.optifine.OptiFineDetector;
 
 import java.lang.Math;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.Arrays;
 import java.util.Locale;
 
 public class NativeModelRenderer {
-    private static final Matrix4f projectionModelViewMatrix = new Matrix4f();
     private static final ThreadLocal<RenderScratch> RENDER_SCRATCH = ThreadLocal.withInitial(RenderScratch::new);
+    private static final int FULL_BRIGHT_LIGHT = LightTexture.pack(15, 15);
     private static final long PROFILE_LOG_INTERVAL_NANOS = 5_000_000_000L;
     private static long profileLastLogTime = System.nanoTime();
     private static long profileRenderCalls;
@@ -37,44 +33,39 @@ public class NativeModelRenderer {
 
     public static void renderMesh(VertexConsumer buffer, PoseStack.Pose pose, GeoModel model, float[] boneParams, float[] stateBuffer, int textureIndex, int renderPartMask, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
         OculusCompat.updatePBRState();
-        boolean isCompatMode = OptiFineDetector.isOptifinePresent() || GeneralConfig.USE_COMPATIBILITY_RENDERER.get();
         boolean isPreview = ModelPreviewRenderer.isPreview() || ModelPreviewRenderer.isExtraPlayer();
         boolean profiling = Boolean.TRUE.equals(GeneralConfig.RENDER_PROFILING.get());
         long startNanos = profiling ? System.nanoTime() : 0L;
-        boolean useNativeRenderer = Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())
-                && NativeLibLoader.isLoaded();
-        if (useNativeRenderer && !nativeComputeFallbackLogged) {
+        boolean requestedNativeRenderer = Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get());
+        if (requestedNativeRenderer && NativeLibLoader.isLoaded() && !nativeComputeFallbackLogged) {
             nativeComputeFallbackLogged = true;
             YesSteveModel.LOGGER.warn("[YSM Render] Native compute renderer is disabled because it can drop model parts; using Java renderer for now");
         }
-        boolean nativePath = false;
-        int vertexCount;
-        if (nativePath) {
-            vertexCount = nativeRenderModel(buffer, pose, projectionModelViewMatrix, isCompatMode, model, boneParams, stateBuffer, textureIndex, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);
-        } else {
-            vertexCount = renderModel(buffer, pose, projectionModelViewMatrix, isCompatMode, model, boneParams, stateBuffer, textureIndex, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);
-        }
+        int vertexCount = renderModel(buffer, pose, model, boneParams, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);
         if (profiling) {
-            recordProfile(System.nanoTime() - startNanos, vertexCount, nativePath);
+            recordProfile(System.nanoTime() - startNanos, vertexCount, false);
         }
     }
 
     public static int renderModel(
             VertexConsumer vertexConsumer,
             PoseStack.Pose pose,
-            Matrix4f projectionModelViewMatrix,
-            boolean isCompatMode,
             GeoModel mesh,
             float[] boneParams,
-            float[] stateBuffer,
-            int textureIndex, int renderPartMask,
+            int renderPartMask,
             int packedLight, int packedOverlay,
             float r, float g, float b, float a,
             boolean isPreview) {
 
         if (mesh.bakedBones == null || mesh.bakedBones.isEmpty()) return 0;
+        java.util.List<GeoModel.BakedBone> bakedBones = mesh.bakedBones;
+        int boneCount = bakedBones.size();
         GeoModel.FlattenedRenderData flattenedRenderData = mesh.getFlattenedRenderData();
         if (flattenedRenderData == null) return 0;
+        GeoModel.BakedBone[] bakedBoneArray = flattenedRenderData.sourceArray;
+        int[] renderBoneIndices = flattenedRenderData.getRenderBoneIndices(renderPartMask);
+        int[] computeBoneIndices = flattenedRenderData.getComputeBoneIndices(renderPartMask);
+        boolean dynamicRenderPartMask = renderPartMask < 0 || renderPartMask > 3;
 
         // TODO: 修復GC壓力
         Matrix4f rootPoseMat = pose.pose();
@@ -82,65 +73,159 @@ public class NativeModelRenderer {
         Matrix4f projMat = null;
 
         RenderScratch scratch = RENDER_SCRATCH.get();
-        scratch.prepare(mesh.bakedBones.size());
-
-        for (int i = 0; i < mesh.bakedBones.size(); i++) {
-            calculateBoneMatrix(i, mesh.bakedBones, boneParams, scratch.boneLocalTransforms, scratch.boneVisible, scratch.boneComputed, scratch.identityMat);
+        scratch.prepare(boneCount);
+        for (int computeIndex = 0; computeIndex < computeBoneIndices.length; computeIndex++) {
+            calculateBoneMatrix(computeBoneIndices[computeIndex], bakedBoneArray, boneParams, scratch.boneLocalTransforms, scratch.boneVisible, scratch.identityMat);
         }
 
         int vertexCount = 0;
-        for (int i = 0; i < mesh.bakedBones.size(); i++) {
-            if (!scratch.boneVisible[i]) {
+        for (int renderBoneIndex = 0; renderBoneIndex < renderBoneIndices.length; renderBoneIndex++) {
+            int i = renderBoneIndices[renderBoneIndex];
+            GeoModel.FlattenedBone bone = flattenedRenderData.bones[i];
+            if (dynamicRenderPartMask && renderPartMask != 0 && bone.partMask != renderPartMask && bone.partMask != 3) {
                 continue;
             }
 
-            GeoModel.FlattenedBone bone = flattenedRenderData.bones[i];
-            if (renderPartMask != 0 && bone.partMask != renderPartMask && bone.partMask != 3) {
+            if (!scratch.boneVisible[i]) {
                 continue;
             }
 
             Matrix4f localBoneMat = scratch.boneLocalTransforms[i];
             scratch.globalBoneMat.set(rootPoseMat).mul(localBoneMat);
+            float globalM00 = scratch.globalBoneMat.m00();
+            float globalM01 = scratch.globalBoneMat.m01();
+            float globalM02 = scratch.globalBoneMat.m02();
+            float globalM10 = scratch.globalBoneMat.m10();
+            float globalM11 = scratch.globalBoneMat.m11();
+            float globalM12 = scratch.globalBoneMat.m12();
+            float globalM20 = scratch.globalBoneMat.m20();
+            float globalM21 = scratch.globalBoneMat.m21();
+            float globalM22 = scratch.globalBoneMat.m22();
+            float globalM30 = scratch.globalBoneMat.m30();
+            float globalM31 = scratch.globalBoneMat.m31();
+            float globalM32 = scratch.globalBoneMat.m32();
             boolean canCullBone = !isPreview && bone.hasCullable;
+            float projM00 = 0.0f;
+            float projM01 = 0.0f;
+            float projM03 = 0.0f;
+            float projM10 = 0.0f;
+            float projM11 = 0.0f;
+            float projM13 = 0.0f;
+            float projM20 = 0.0f;
+            float projM21 = 0.0f;
+            float projM23 = 0.0f;
+            float projM30 = 0.0f;
+            float projM31 = 0.0f;
+            float projM33 = 0.0f;
             if (canCullBone) {
                 if (projMat == null) {
                     projMat = net.minecraft.client.Minecraft.getInstance().gameRenderer.getProjectionMatrix(net.minecraft.client.Minecraft.getInstance().options.fov().get());
                 }
                 scratch.projBoneMat.set(projMat).mul(scratch.globalBoneMat);
+                projM00 = scratch.projBoneMat.m00();
+                projM01 = scratch.projBoneMat.m01();
+                projM03 = scratch.projBoneMat.m03();
+                projM10 = scratch.projBoneMat.m10();
+                projM11 = scratch.projBoneMat.m11();
+                projM13 = scratch.projBoneMat.m13();
+                projM20 = scratch.projBoneMat.m20();
+                projM21 = scratch.projBoneMat.m21();
+                projM23 = scratch.projBoneMat.m23();
+                projM30 = scratch.projBoneMat.m30();
+                projM31 = scratch.projBoneMat.m31();
+                projM33 = scratch.projBoneMat.m33();
             }
 
             // 法線全域矩陣
             localBoneMat.normal(scratch.localNormalMat);
             scratch.globalNormalMat.set(rootNormalMC).mul(scratch.localNormalMat);
+            float normalM00 = scratch.globalNormalMat.m00();
+            float normalM01 = scratch.globalNormalMat.m01();
+            float normalM02 = scratch.globalNormalMat.m02();
+            float normalM10 = scratch.globalNormalMat.m10();
+            float normalM11 = scratch.globalNormalMat.m11();
+            float normalM12 = scratch.globalNormalMat.m12();
+            float normalM20 = scratch.globalNormalMat.m20();
+            float normalM21 = scratch.globalNormalMat.m21();
+            float normalM22 = scratch.globalNormalMat.m22();
+            scratch.prepareTransformedNormals(bone.normalCount);
+            float[] uniqueNormals = bone.uniqueNormals;
+            float[] transformedNormals = scratch.transformedNormals;
+            for (int normalIndex = 0; normalIndex < bone.normalCount; normalIndex++) {
+                int normalOffset = normalIndex * 3;
+                float x = uniqueNormals[normalOffset];
+                float y = uniqueNormals[normalOffset + 1];
+                float z = uniqueNormals[normalOffset + 2];
+                float transformedX = (normalM00 * x) + (normalM10 * y) + (normalM20 * z);
+                float transformedY = (normalM01 * x) + (normalM11 * y) + (normalM21 * z);
+                float transformedZ = (normalM02 * x) + (normalM12 * y) + (normalM22 * z);
+                float lengthSq = (transformedX * transformedX) + (transformedY * transformedY) + (transformedZ * transformedZ);
+                if (lengthSq > 1.0E-12f) {
+                    float invLength = (float) (1.0d / Math.sqrt(lengthSq));
+                    transformedX *= invLength;
+                    transformedY *= invLength;
+                    transformedZ *= invLength;
+                }
+                transformedNormals[normalOffset] = transformedX;
+                transformedNormals[normalOffset + 1] = transformedY;
+                transformedNormals[normalOffset + 2] = transformedZ;
+            }
 
-            int currentPackedLight = bone.glow ? LightTexture.pack(15, 15) : packedLight;
+            int currentPackedLight = bone.glow ? FULL_BRIGHT_LIGHT : packedLight;
+            float[] positions = bone.positions;
+            float[] uvs = bone.uvs;
+            boolean[] cullable = bone.cullable;
+            int[] normalIndices = bone.normalIndices;
 
             for (int quadIndex = 0; quadIndex < bone.quadCount; quadIndex++) {
                 int positionOffset = quadIndex * 12;
-                if (canCullBone && bone.cullable[quadIndex]) {
-                    scratch.p1.set(bone.positions[positionOffset], bone.positions[positionOffset + 1], bone.positions[positionOffset + 2], 1.0f).mul(scratch.projBoneMat);
-                    scratch.p2.set(bone.positions[positionOffset + 3], bone.positions[positionOffset + 4], bone.positions[positionOffset + 5], 1.0f).mul(scratch.projBoneMat);
-                    scratch.p3.set(bone.positions[positionOffset + 6], bone.positions[positionOffset + 7], bone.positions[positionOffset + 8], 1.0f).mul(scratch.projBoneMat);
-                    float det = scratch.p1.x() * (scratch.p2.y() * scratch.p3.w() - scratch.p3.y() * scratch.p2.w()) - scratch.p2.x() * (scratch.p1.y() * scratch.p3.w() - scratch.p3.y() * scratch.p1.w()) + scratch.p3.x() * (scratch.p1.y() * scratch.p2.w() - scratch.p2.y() * scratch.p1.w());
+                if (canCullBone && cullable[quadIndex]) {
+                    float p1x = positions[positionOffset];
+                    float p1y = positions[positionOffset + 1];
+                    float p1z = positions[positionOffset + 2];
+                    float p2x = positions[positionOffset + 3];
+                    float p2y = positions[positionOffset + 4];
+                    float p2z = positions[positionOffset + 5];
+                    float p3x = positions[positionOffset + 6];
+                    float p3y = positions[positionOffset + 7];
+                    float p3z = positions[positionOffset + 8];
+
+                    float cp1x = (projM00 * p1x) + (projM10 * p1y) + (projM20 * p1z) + projM30;
+                    float cp1y = (projM01 * p1x) + (projM11 * p1y) + (projM21 * p1z) + projM31;
+                    float cp1w = (projM03 * p1x) + (projM13 * p1y) + (projM23 * p1z) + projM33;
+                    float cp2x = (projM00 * p2x) + (projM10 * p2y) + (projM20 * p2z) + projM30;
+                    float cp2y = (projM01 * p2x) + (projM11 * p2y) + (projM21 * p2z) + projM31;
+                    float cp2w = (projM03 * p2x) + (projM13 * p2y) + (projM23 * p2z) + projM33;
+                    float cp3x = (projM00 * p3x) + (projM10 * p3y) + (projM20 * p3z) + projM30;
+                    float cp3y = (projM01 * p3x) + (projM11 * p3y) + (projM21 * p3z) + projM31;
+                    float cp3w = (projM03 * p3x) + (projM13 * p3y) + (projM23 * p3z) + projM33;
+                    float det = cp1x * (cp2y * cp3w - cp3y * cp2w) - cp2x * (cp1y * cp3w - cp3y * cp1w) + cp3x * (cp1y * cp2w - cp2y * cp1w);
                     if (det <= 0.0f) {
                         continue;
                     }
                 }
 
-                int normalOffset = quadIndex * 3;
-                scratch.tempNorm.set(bone.normals[normalOffset], bone.normals[normalOffset + 1], bone.normals[normalOffset + 2]).mul(scratch.globalNormalMat).normalize();
+                int normalOffset = normalIndices[quadIndex] * 3;
+                float normalX = transformedNormals[normalOffset];
+                float normalY = transformedNormals[normalOffset + 1];
+                float normalZ = transformedNormals[normalOffset + 2];
 
                 int uvOffset = quadIndex * 8;
                 for (int v = 0; v < 4; v++) {
                     int vertexPositionOffset = positionOffset + v * 3;
-                    scratch.tempPos.set(bone.positions[vertexPositionOffset], bone.positions[vertexPositionOffset + 1], bone.positions[vertexPositionOffset + 2], 1.0f).mul(scratch.globalBoneMat);
+                    float x = positions[vertexPositionOffset];
+                    float y = positions[vertexPositionOffset + 1];
+                    float z = positions[vertexPositionOffset + 2];
                     int vertexUvOffset = uvOffset + v * 2;
-                    vertexConsumer.addVertex(scratch.tempPos.x(), scratch.tempPos.y(), scratch.tempPos.z())
+                    vertexConsumer.addVertex(
+                                    (globalM00 * x) + (globalM10 * y) + (globalM20 * z) + globalM30,
+                                    (globalM01 * x) + (globalM11 * y) + (globalM21 * z) + globalM31,
+                                    (globalM02 * x) + (globalM12 * y) + (globalM22 * z) + globalM32)
                             .setColor(r, g, b, a)
-                            .setUv(bone.uvs[vertexUvOffset], bone.uvs[vertexUvOffset + 1])
+                            .setUv(uvs[vertexUvOffset], uvs[vertexUvOffset + 1])
                             .setOverlay(packedOverlay)
                             .setLight(currentPackedLight)
-                            .setNormal(scratch.tempNorm.x(), scratch.tempNorm.y(), scratch.tempNorm.z());
+                            .setNormal(normalX, normalY, normalZ);
                     vertexCount++;
                 }
             }
@@ -148,15 +233,13 @@ public class NativeModelRenderer {
         return vertexCount;
     }
 
-    private static Matrix4f calculateBoneMatrix(int idx, java.util.List<GeoModel.BakedBone> bones, float[] boneParams, Matrix4f[] cache, boolean[] visibleCache, boolean[] computedCache, Matrix4f rootPose) {
-        if (computedCache[idx]) return cache[idx];
-
-        GeoModel.BakedBone bone = bones.get(idx);
+    private static Matrix4f calculateBoneMatrix(int idx, GeoModel.BakedBone[] bones, float[] boneParams, Matrix4f[] cache, boolean[] visibleCache, Matrix4f rootPose) {
+        GeoModel.BakedBone bone = bones[idx];
         Matrix4f parentMatrix = rootPose;
         boolean isVisible = true;
 
         if (bone.parentIdx != -1) {
-            parentMatrix = calculateBoneMatrix(bone.parentIdx, bones, boneParams, cache, visibleCache, computedCache, rootPose);
+            parentMatrix = cache[bone.parentIdx];
             // 如果父骨骼不可見，子骨骼必然跟著不可見
             if (!visibleCache[bone.parentIdx]) {
                 isVisible = false;
@@ -181,39 +264,32 @@ public class NativeModelRenderer {
         float animSy = boneParams[pOffset + 7];
         float animSz = boneParams[pOffset + 8];
 
-        float unk1 = boneParams[pOffset + 9];
-        float unk2 = boneParams[pOffset + 10];
-        float unk3 = boneParams[pOffset + 11];
-
-        if (unk1 != 0.0F && unk2 != 0.0F && unk3 != 0.0F) {
-            //"".hashCode();
-        }
-
         if (animSx == 0.0f && animSy == 0.0f && animSz == 0.0f) {
             isVisible = false;
         }/* else if (unk1 == 1 || unk2 == 1) isVisible = false;*/
 
         localMat.translate(
-                (bone.pivotX - animTx) * 0.0625f,
-                (bone.pivotY + animTy) * 0.0625f,
-                (bone.pivotZ + animTz) * 0.0625f
+                bone.pivotX16 - (animTx * 0.0625f),
+                bone.pivotY16 + (animTy * 0.0625f),
+                bone.pivotZ16 + (animTz * 0.0625f)
         );
-        localMat.rotateZ(animRz);
-        localMat.rotateY(animRy);
-        localMat.rotateX(animRx);
-
-        if (bone.name.equals("gun")) {
-            //"".hashCode();
+        if (animRz != 0.0f) {
+            localMat.rotateZ(animRz);
+        }
+        if (animRy != 0.0f) {
+            localMat.rotateY(animRy);
+        }
+        if (animRx != 0.0f) {
+            localMat.rotateX(animRx);
         }
 
         if (animSx != 1.0f || animSy != 1.0f || animSz != 1.0f) {
             localMat.scale(animSx, animSy, animSz);
         }
 
-        localMat.translate(-bone.pivotX / 16f, -bone.pivotY / 16f, -bone.pivotZ / 16f);
+        localMat.translate(-bone.pivotX16, -bone.pivotY16, -bone.pivotZ16);
 
         visibleCache[idx] = isVisible; // 保存當前骨骼的可見性
-        computedCache[idx] = true;
         return localMat;
     }
 
@@ -317,25 +393,23 @@ public class NativeModelRenderer {
         private final Matrix4f projBoneMat = new Matrix4f();
         private final Matrix3f localNormalMat = new Matrix3f();
         private final Matrix3f globalNormalMat = new Matrix3f();
-        private final Vector4f p1 = new Vector4f();
-        private final Vector4f p2 = new Vector4f();
-        private final Vector4f p3 = new Vector4f();
-        private final Vector4f tempPos = new Vector4f();
-        private final Vector3f tempNorm = new Vector3f();
         private Matrix4f[] boneLocalTransforms = new Matrix4f[0];
         private boolean[] boneVisible = new boolean[0];
-        private boolean[] boneComputed = new boolean[0];
+        private float[] transformedNormals = new float[0];
 
         private void prepare(int boneCount) {
             this.identityMat.identity();
             if (this.boneLocalTransforms.length < boneCount) {
                 this.boneLocalTransforms = new Matrix4f[boneCount];
                 this.boneVisible = new boolean[boneCount];
-                this.boneComputed = new boolean[boneCount];
-                return;
             }
-            Arrays.fill(this.boneVisible, 0, boneCount, false);
-            Arrays.fill(this.boneComputed, 0, boneCount, false);
+        }
+
+        private void prepareTransformedNormals(int normalCount) {
+            int required = normalCount * 3;
+            if (this.transformedNormals.length < required) {
+                this.transformedNormals = new float[required];
+            }
         }
     }
 }
