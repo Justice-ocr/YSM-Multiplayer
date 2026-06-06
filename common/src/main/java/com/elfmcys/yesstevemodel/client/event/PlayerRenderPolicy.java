@@ -41,6 +41,15 @@ public final class PlayerRenderPolicy {
         };
     }
 
+    public static boolean shouldSuppressVanillaFallback(Player player) {
+        if (player == null || player.isSpectator()) {
+            return true;
+        }
+        return isSelf(player)
+                ? GeneralConfig.DISABLE_SELF_MODEL.get().booleanValue()
+                : GeneralConfig.DISABLE_OTHER_MODEL.get().booleanValue();
+    }
+
     private static List<Layer> parseOrder(String rawOrder, Layer fallback) {
         ArrayList<Layer> layers = new ArrayList<>(3);
         if (StringUtils.isNotBlank(rawOrder)) {

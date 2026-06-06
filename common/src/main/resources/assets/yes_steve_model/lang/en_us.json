@@ -59,6 +59,7 @@
   "gui.yes_steve_model.config.loading_state_position": "Loading state screen position",
   "gui.yes_steve_model.config.use_compatibility_renderer": "Use compatibility renderer",
   "gui.yes_steve_model.config.use_native_renderer": "Use experimental native renderer",
+  "gui.yes_steve_model.config.use_experimental_gpu_renderer": "Use experimental GPU renderer",
   "gui.yes_steve_model.config.render_profiling": "Print renderer profiling",
   "gui.yes_steve_model.config.self_render_order": "Self render order",
   "gui.yes_steve_model.config.other_render_order": "Other render order",

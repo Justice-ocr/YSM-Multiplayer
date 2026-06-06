@@ -157,8 +157,9 @@ public abstract class GeoReplacedEntityRenderer<TEntity extends Player, T extend
             preRenderCallback(entity, poseStack, partialTick);
             poseStack.translate(0.0f, 0.01f, 0.0f);
             AnimatedGeoModel animatedGeoModel = t.getCurrentModel();
+            ResourceLocation modelTextureLocation = resourceLocation == null ? t.getTextureLocation() : resourceLocation;
             int textureIndex = resourceLocation == null ? t.getTextureIndex() : 0;
-            RenderType renderType = getRenderType(resourceLocation == null ? t.getTextureLocation() : resourceLocation, isBodyVisible(state) && !entity.isInvisibleTo(minecraft.player), minecraft.shouldEntityAppearGlowing(entity), t.getCurrentModel().getGeoModel().isTranslucentTexture(textureIndex));
+            RenderType renderType = getRenderType(modelTextureLocation, isBodyVisible(state) && !entity.isInvisibleTo(minecraft.player), minecraft.shouldEntityAppearGlowing(entity), t.getCurrentModel().getGeoModel().isTranslucentTexture(textureIndex));
             boolean useExtraPlayer = t.isRenderLayersFirst();
             Color color = getRenderColor(t, partialTick, poseStack, multiBufferSource, null, packedLight);
             renderWithBone(animatedGeoModel, t, partialTick, poseStack, multiBufferSource, null, packedLight, packOverlayCoords(entity, getHurtOverlayProgress(entity, partialTick)), color.getRed() / 255.0f, color.getGreen() / 255.0f, color.getBlue() / 255.0f, color.getAlpha() / 255.0f);
@@ -166,7 +167,7 @@ public abstract class GeoReplacedEntityRenderer<TEntity extends Player, T extend
                 render(t, state, partialTick, poseStack, multiBufferSource, packedLight, event, modelData);
             }
             if (renderType != null) {
-                renderWithBoneAndRenderType(animatedGeoModel, t, partialTick, renderType, poseStack, multiBufferSource, textureIndex, null, packedLight, packOverlayCoords(entity, getHurtOverlayProgress(entity, partialTick)), color.getRed() / 255.0f, color.getGreen() / 255.0f, color.getBlue() / 255.0f, color.getAlpha() / 255.0f);
+                renderWithBoneAndRenderType(animatedGeoModel, t, partialTick, renderType, poseStack, multiBufferSource, textureIndex, null, packedLight, packOverlayCoords(entity, getHurtOverlayProgress(entity, partialTick)), color.getRed() / 255.0f, color.getGreen() / 255.0f, color.getBlue() / 255.0f, color.getAlpha() / 255.0f, modelTextureLocation);
             }
             if (!useExtraPlayer && !entity.isSpectator()) {
                 render(t, state, partialTick, poseStack, multiBufferSource, packedLight, event, modelData);

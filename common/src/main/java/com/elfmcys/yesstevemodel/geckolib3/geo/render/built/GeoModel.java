@@ -3,6 +3,8 @@ package com.elfmcys.yesstevemodel.geckolib3.geo.render.built;
 import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
+import com.elfmcys.yesstevemodel.geckolib3.geo.NativeGpuGlMeshCache;
+import com.elfmcys.yesstevemodel.geckolib3.geo.NativeGpuMeshCache;
 import com.elfmcys.yesstevemodel.geckolib3.geo.animated.AnimatedGeoModel;
 import com.elfmcys.yesstevemodel.resource.models.GeometryDescription;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -24,6 +26,7 @@ import java.util.*;
  */
 public class GeoModel {
     private static boolean nativeInitFailureLogged;
+    private static boolean nativeGpuMeshFailureLogged;
 
     @NotNull
     public final List<GeoBone> bones;
@@ -166,7 +169,21 @@ public class GeoModel {
 
     public long nativeModelHandle = 0;
 
+    public long nativeGpuMeshHandle = 0;
+
+    public final int[] nativeGpuMeshMetadata = new int[9];
+
+    public NativeGpuMeshCache nativeGpuMeshCache;
+
+    public NativeGpuGlMeshCache nativeGpuGlMeshCache;
+
+    public boolean nativeGpuGlUploadAttempted;
+
     private boolean nativeCacheAttempted;
+
+    private boolean nativeGpuMeshAttempted;
+
+    private boolean nativeGpuUploadAttempted;
 
     public static native long nInitModelCache(ByteBuffer buffer);
 
@@ -201,6 +218,52 @@ public class GeoModel {
         if (nativeCacheAttempted || nativeModelHandle != 0) return;
         nativeCacheAttempted = true;
 
+        ByteBuffer buffer = buildNativeMeshBuffer();
+        if (buffer == null) return;
+
+        try {
+            this.nativeModelHandle = nInitModelCache(buffer);
+        } catch (Throwable throwable) {
+            if (!nativeInitFailureLogged) {
+                nativeInitFailureLogged = true;
+                YesSteveModel.LOGGER.warn("[YSM Render] Native model cache is unavailable; falling back to Java renderer", throwable);
+            }
+            this.nativeModelHandle = 0;
+        }
+    }
+
+    public void buildNativeGpuMesh() {
+        if (bakedBones == null || bakedBones.isEmpty()) return;
+        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return;
+        if (nativeGpuMeshAttempted || nativeGpuMeshHandle != 0) return;
+        nativeGpuMeshAttempted = true;
+
+        ByteBuffer buffer = buildNativeMeshBuffer();
+        if (buffer == null) return;
+
+        try {
+            Arrays.fill(this.nativeGpuMeshMetadata, 0);
+            this.nativeGpuMeshHandle = nBuildGpuMesh(buffer, this.nativeGpuMeshMetadata);
+        } catch (Throwable throwable) {
+            if (!nativeGpuMeshFailureLogged) {
+                nativeGpuMeshFailureLogged = true;
+                YesSteveModel.LOGGER.warn("[YSM Render] Native GPU mesh cache is unavailable; falling back to Java bone matrices", throwable);
+            }
+            this.nativeGpuMeshHandle = 0;
+        }
+    }
+
+    public NativeGpuMeshCache getOrUploadNativeGpuMesh() {
+        if (nativeGpuMeshCache != null) return nativeGpuMeshCache;
+        if (nativeGpuUploadAttempted) return null;
+        if (bakedBones == null || bakedBones.isEmpty()) return null;
+        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return null;
+        nativeGpuUploadAttempted = true;
+        nativeGpuMeshCache = NativeGpuMeshCache.upload(this);
+        return nativeGpuMeshCache;
+    }
+
+    private ByteBuffer buildNativeMeshBuffer() {
         int totalBones = bakedBones.size();
         int totalCubes = 0;
         int totalQuads = 0;
@@ -247,23 +310,30 @@ public class GeoModel {
         }
 
         buffer.position(0);
-        try {
-            this.nativeModelHandle = nInitModelCache(buffer);
-        } catch (Throwable throwable) {
-            if (!nativeInitFailureLogged) {
-                nativeInitFailureLogged = true;
-                YesSteveModel.LOGGER.warn("[YSM Render] Native model cache is unavailable; falling back to Java renderer", throwable);
-            }
-            this.nativeModelHandle = 0;
-        }
+        return buffer;
     }
 
     public void freeNativeCache() {
+        if (nativeGpuMeshCache != null) {
+            nativeGpuMeshCache.close();
+            nativeGpuMeshCache = null;
+        }
+        if (nativeGpuGlMeshCache != null) {
+            nativeGpuGlMeshCache.close();
+            nativeGpuGlMeshCache = null;
+        }
         if (nativeModelHandle != 0) {
             nDestroyModelCache(nativeModelHandle);
             nativeModelHandle = 0;
         }
+        if (nativeGpuMeshHandle != 0) {
+            nFreeGpuMesh(nativeGpuMeshHandle);
+            nativeGpuMeshHandle = 0;
+        }
         nativeCacheAttempted = false;
+        nativeGpuMeshAttempted = false;
+        nativeGpuUploadAttempted = false;
+        nativeGpuGlUploadAttempted = false;
     }
 
     public FlattenedRenderData getFlattenedRenderData() {

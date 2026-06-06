@@ -82,10 +82,11 @@ public class ModelAssemblyFactory {
         ObjectSet<String> objectSetKeySet = object2ReferenceOpenHashMap.keySet();
         Objects.requireNonNull(conditionManager);
         objectSetKeySet.forEach(conditionManager::addTest);
+        ObjectSet<String> armAnimationNames = armAnimations.keySet();
+        armAnimationNames.forEach(conditionManager::addTest);
         ArmorConditions armorRegistry = new ArmorConditions();
-        ObjectSet<String> objectSetKeySet2 = armAnimations.keySet();
         Objects.requireNonNull(armorRegistry);
-        objectSetKeySet2.forEach(armorRegistry::addCondition);
+        armAnimationNames.forEach(armorRegistry::addCondition);
         Object2ReferenceOpenHashMap<String, AnimationController> animationControllers = new Object2ReferenceOpenHashMap<>();
         for (AnimationControllerFile animationControllerFile : hierarchyData.getAnimationControllers()) {
             animationControllers.putAll(animationControllerFile.getAnimationControllers());

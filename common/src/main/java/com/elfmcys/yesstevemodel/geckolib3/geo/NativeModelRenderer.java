@@ -10,6 +10,7 @@ import com.elfmcys.yesstevemodel.geckolib3.geo.render.built.*;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.resources.ResourceLocation;
 import org.joml.*;
 import rip.ysm.compat.oculus.OculusCompat;
 
@@ -22,28 +23,52 @@ import java.util.Locale;
 
 public class NativeModelRenderer {
     private static final ThreadLocal<RenderScratch> RENDER_SCRATCH = ThreadLocal.withInitial(RenderScratch::new);
+    private static final ThreadLocal<Integer> NATIVE_SUBMITTED_VERTICES = ThreadLocal.withInitial(() -> 0);
     private static final int FULL_BRIGHT_LIGHT = LightTexture.pack(15, 15);
+    private static final int NATIVE_BONE_STRIDE_BYTES = 144;
+    private static final int NATIVE_BONE_TRANSFORM_OFFSET_BYTES = 0;
+    private static final int NATIVE_BONE_NORMAL_OFFSET_BYTES = 64;
     private static final long PROFILE_LOG_INTERVAL_NANOS = 5_000_000_000L;
     private static long profileLastLogTime = System.nanoTime();
     private static long profileRenderCalls;
     private static long profileNativeCalls;
     private static long profileVertices;
     private static long profileNanos;
-    private static boolean nativeComputeFallbackLogged;
+    private static boolean nativeBoneMatrixFallbackLogged;
 
     public static void renderMesh(VertexConsumer buffer, PoseStack.Pose pose, GeoModel model, float[] boneParams, float[] stateBuffer, int textureIndex, int renderPartMask, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
+        renderMesh(buffer, pose, model, boneParams, stateBuffer, textureIndex, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, null);
+    }
+
+    public static void renderMesh(VertexConsumer buffer, PoseStack.Pose pose, GeoModel model, float[] boneParams, float[] stateBuffer, int textureIndex, int renderPartMask, int packedLight, int packedOverlay, float red, float green, float blue, float alpha, ResourceLocation textureLocation) {
         OculusCompat.updatePBRState();
         boolean isPreview = ModelPreviewRenderer.isPreview() || ModelPreviewRenderer.isExtraPlayer();
         boolean profiling = Boolean.TRUE.equals(GeneralConfig.RENDER_PROFILING.get());
         long startNanos = profiling ? System.nanoTime() : 0L;
-        boolean requestedNativeRenderer = Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get());
-        if (requestedNativeRenderer && NativeLibLoader.isLoaded() && !nativeComputeFallbackLogged) {
-            nativeComputeFallbackLogged = true;
-            YesSteveModel.LOGGER.warn("[YSM Render] Native compute renderer is disabled because it can drop model parts; using Java renderer for now");
+        RenderScratch scratch = RENDER_SCRATCH.get();
+        scratch.usedNativeBoneMatrices = false;
+        if (NativeGpuGlRenderer.tryRender(model, pose, boneParams, stateBuffer, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, textureLocation, isPreview)) {
+            if (profiling) {
+                recordProfile(System.nanoTime() - startNanos, 0, true);
+            }
+            return;
+        }
+        if (!isPreview && Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get()) && NativeLibLoader.isLoaded()) {
+            model.getOrUploadNativeGpuMesh();
+            if (Boolean.TRUE.equals(GeneralConfig.USE_EXPERIMENTAL_GPU_RENDERER.get())) {
+                NativeGpuRenderer.prepareStaticMesh(model, renderPartMask, false);
+            }
+        }
+        int nativeVertexCount = tryRenderNativeVertices(buffer, pose, model, boneParams, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);
+        if (nativeVertexCount > 0) {
+            if (profiling) {
+                recordProfile(System.nanoTime() - startNanos, nativeVertexCount, true);
+            }
+            return;
         }
         int vertexCount = renderModel(buffer, pose, model, boneParams, renderPartMask, packedLight, packedOverlay, red, green, blue, alpha, isPreview);
         if (profiling) {
-            recordProfile(System.nanoTime() - startNanos, vertexCount, false);
+            recordProfile(System.nanoTime() - startNanos, vertexCount, scratch.usedNativeBoneMatrices);
         }
     }
 
@@ -74,8 +99,14 @@ public class NativeModelRenderer {
 
         RenderScratch scratch = RENDER_SCRATCH.get();
         scratch.prepare(boneCount);
+        boolean useNativeBoneMatrices = tryComputeNativeBoneMatrices(mesh, pose, boneParams, renderPartMask, packedLight, boneCount, scratch);
         for (int computeIndex = 0; computeIndex < computeBoneIndices.length; computeIndex++) {
-            calculateBoneMatrix(computeBoneIndices[computeIndex], bakedBoneArray, boneParams, scratch.boneLocalTransforms, scratch.boneVisible, scratch.identityMat);
+            int boneIndex = computeBoneIndices[computeIndex];
+            if (useNativeBoneMatrices) {
+                calculateBoneVisibility(boneIndex, bakedBoneArray, boneParams, scratch.boneVisible);
+            } else {
+                calculateBoneMatrix(boneIndex, bakedBoneArray, boneParams, scratch.boneLocalTransforms, scratch.boneVisible, scratch.identityMat);
+            }
         }
 
         int vertexCount = 0;
@@ -91,19 +122,46 @@ public class NativeModelRenderer {
             }
 
             Matrix4f localBoneMat = scratch.boneLocalTransforms[i];
-            scratch.globalBoneMat.set(rootPoseMat).mul(localBoneMat);
-            float globalM00 = scratch.globalBoneMat.m00();
-            float globalM01 = scratch.globalBoneMat.m01();
-            float globalM02 = scratch.globalBoneMat.m02();
-            float globalM10 = scratch.globalBoneMat.m10();
-            float globalM11 = scratch.globalBoneMat.m11();
-            float globalM12 = scratch.globalBoneMat.m12();
-            float globalM20 = scratch.globalBoneMat.m20();
-            float globalM21 = scratch.globalBoneMat.m21();
-            float globalM22 = scratch.globalBoneMat.m22();
-            float globalM30 = scratch.globalBoneMat.m30();
-            float globalM31 = scratch.globalBoneMat.m31();
-            float globalM32 = scratch.globalBoneMat.m32();
+            float globalM00;
+            float globalM01;
+            float globalM02;
+            float globalM10;
+            float globalM11;
+            float globalM12;
+            float globalM20;
+            float globalM21;
+            float globalM22;
+            float globalM30;
+            float globalM31;
+            float globalM32;
+            if (useNativeBoneMatrices) {
+                globalM00 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 0);
+                globalM01 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 1);
+                globalM02 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 2);
+                globalM10 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 4);
+                globalM11 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 5);
+                globalM12 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 6);
+                globalM20 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 8);
+                globalM21 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 9);
+                globalM22 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 10);
+                globalM30 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 12);
+                globalM31 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 13);
+                globalM32 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES, 14);
+            } else {
+                scratch.globalBoneMat.set(rootPoseMat).mul(localBoneMat);
+                globalM00 = scratch.globalBoneMat.m00();
+                globalM01 = scratch.globalBoneMat.m01();
+                globalM02 = scratch.globalBoneMat.m02();
+                globalM10 = scratch.globalBoneMat.m10();
+                globalM11 = scratch.globalBoneMat.m11();
+                globalM12 = scratch.globalBoneMat.m12();
+                globalM20 = scratch.globalBoneMat.m20();
+                globalM21 = scratch.globalBoneMat.m21();
+                globalM22 = scratch.globalBoneMat.m22();
+                globalM30 = scratch.globalBoneMat.m30();
+                globalM31 = scratch.globalBoneMat.m31();
+                globalM32 = scratch.globalBoneMat.m32();
+            }
             boolean canCullBone = !isPreview && bone.hasCullable;
             float projM00 = 0.0f;
             float projM01 = 0.0f;
@@ -121,6 +179,9 @@ public class NativeModelRenderer {
                 if (projMat == null) {
                     projMat = net.minecraft.client.Minecraft.getInstance().gameRenderer.getProjectionMatrix(net.minecraft.client.Minecraft.getInstance().options.fov().get());
                 }
+                if (useNativeBoneMatrices) {
+                    setNativeBoneMatrix(scratch.globalBoneMat, scratch.nativeBoneData, i, NATIVE_BONE_TRANSFORM_OFFSET_BYTES);
+                }
                 scratch.projBoneMat.set(projMat).mul(scratch.globalBoneMat);
                 projM00 = scratch.projBoneMat.m00();
                 projM01 = scratch.projBoneMat.m01();
@@ -137,17 +198,38 @@ public class NativeModelRenderer {
             }
 
             // 法線全域矩陣
-            localBoneMat.normal(scratch.localNormalMat);
-            scratch.globalNormalMat.set(rootNormalMC).mul(scratch.localNormalMat);
-            float normalM00 = scratch.globalNormalMat.m00();
-            float normalM01 = scratch.globalNormalMat.m01();
-            float normalM02 = scratch.globalNormalMat.m02();
-            float normalM10 = scratch.globalNormalMat.m10();
-            float normalM11 = scratch.globalNormalMat.m11();
-            float normalM12 = scratch.globalNormalMat.m12();
-            float normalM20 = scratch.globalNormalMat.m20();
-            float normalM21 = scratch.globalNormalMat.m21();
-            float normalM22 = scratch.globalNormalMat.m22();
+            float normalM00;
+            float normalM01;
+            float normalM02;
+            float normalM10;
+            float normalM11;
+            float normalM12;
+            float normalM20;
+            float normalM21;
+            float normalM22;
+            if (useNativeBoneMatrices) {
+                normalM00 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 0);
+                normalM01 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 1);
+                normalM02 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 2);
+                normalM10 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 4);
+                normalM11 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 5);
+                normalM12 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 6);
+                normalM20 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 8);
+                normalM21 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 9);
+                normalM22 = nativeBoneFloat(scratch.nativeBoneData, i, NATIVE_BONE_NORMAL_OFFSET_BYTES, 10);
+            } else {
+                localBoneMat.normal(scratch.localNormalMat);
+                scratch.globalNormalMat.set(rootNormalMC).mul(scratch.localNormalMat);
+                normalM00 = scratch.globalNormalMat.m00();
+                normalM01 = scratch.globalNormalMat.m01();
+                normalM02 = scratch.globalNormalMat.m02();
+                normalM10 = scratch.globalNormalMat.m10();
+                normalM11 = scratch.globalNormalMat.m11();
+                normalM12 = scratch.globalNormalMat.m12();
+                normalM20 = scratch.globalNormalMat.m20();
+                normalM21 = scratch.globalNormalMat.m21();
+                normalM22 = scratch.globalNormalMat.m22();
+            }
             scratch.prepareTransformedNormals(bone.normalCount);
             float[] uniqueNormals = bone.uniqueNormals;
             float[] transformedNormals = scratch.transformedNormals;
@@ -233,6 +315,84 @@ public class NativeModelRenderer {
         return vertexCount;
     }
 
+    private static int tryRenderNativeVertices(VertexConsumer vertexConsumer, PoseStack.Pose pose, GeoModel mesh, float[] boneParams, int renderPartMask, int packedLight, int packedOverlay, float r, float g, float b, float a, boolean isPreview) {
+        if (isPreview || renderPartMask != 0 || !Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get()) || !NativeLibLoader.isLoaded()) {
+            return 0;
+        }
+        GeoModel.FlattenedRenderData flattenedRenderData = mesh.getFlattenedRenderData();
+        if (flattenedRenderData == null || !canUseNativeVertexPath(flattenedRenderData, boneParams)) {
+            return 0;
+        }
+        mesh.buildNativeCache();
+        if (mesh.nativeModelHandle == 0) {
+            return 0;
+        }
+        try {
+            return nativeRenderModel(vertexConsumer, pose, null, false, mesh, boneParams, null, 0, 0, packedLight, packedOverlay, r, g, b, a, false);
+        } catch (Throwable throwable) {
+            if (!nativeBoneMatrixFallbackLogged) {
+                nativeBoneMatrixFallbackLogged = true;
+                YesSteveModel.LOGGER.warn("[YSM Render] Native vertex path failed; falling back to Java renderer", throwable);
+            }
+            return 0;
+        }
+    }
+
+    private static boolean canUseNativeVertexPath(GeoModel.FlattenedRenderData flattenedRenderData, float[] boneParams) {
+        for (GeoModel.FlattenedBone bone : flattenedRenderData.bones) {
+            if (bone != null && bone.hasCullable) {
+                return false;
+            }
+        }
+        int boneCount = flattenedRenderData.bones.length;
+        for (int boneIndex = 0; boneIndex < boneCount; boneIndex++) {
+            int skipChildrenOffset = (boneIndex * 12) + 10;
+            if (skipChildrenOffset < boneParams.length && boneParams[skipChildrenOffset] != 0.0f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean tryComputeNativeBoneMatrices(GeoModel mesh, PoseStack.Pose pose, float[] boneParams, int renderPartMask, int packedLight, int boneCount, RenderScratch scratch) {
+        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get()) || !NativeLibLoader.isLoaded()) {
+            return false;
+        }
+        mesh.buildNativeGpuMesh();
+        if (mesh.nativeGpuMeshHandle == 0) {
+            return false;
+        }
+        try {
+            scratch.prepareNativeBoneData(boneCount);
+            pose.pose().get(scratch.rootPoseTransfer);
+            Matrix3f rootNormal = pose.normal();
+            scratch.rootNormalTransfer[0] = rootNormal.m00();
+            scratch.rootNormalTransfer[1] = rootNormal.m01();
+            scratch.rootNormalTransfer[2] = rootNormal.m02();
+            scratch.rootNormalTransfer[3] = rootNormal.m10();
+            scratch.rootNormalTransfer[4] = rootNormal.m11();
+            scratch.rootNormalTransfer[5] = rootNormal.m12();
+            scratch.rootNormalTransfer[6] = rootNormal.m20();
+            scratch.rootNormalTransfer[7] = rootNormal.m21();
+            scratch.rootNormalTransfer[8] = rootNormal.m22();
+            GeoModel.nComputeBoneMatrices(mesh.nativeGpuMeshHandle, scratch.rootPoseTransfer, scratch.rootNormalTransfer, boneParams, packedLight, scratch.nativeBoneData);
+            if (mesh.nativeGpuMeshCache != null) {
+                mesh.nativeGpuMeshCache.uploadBoneData(scratch.nativeBoneData, boneCount);
+                if (Boolean.TRUE.equals(GeneralConfig.USE_EXPERIMENTAL_GPU_RENDERER.get())) {
+                    NativeGpuRenderer.prepareBoneDraw(mesh, renderPartMask, boneCount);
+                }
+            }
+            scratch.usedNativeBoneMatrices = true;
+            return true;
+        } catch (Throwable throwable) {
+            if (!nativeBoneMatrixFallbackLogged) {
+                nativeBoneMatrixFallbackLogged = true;
+                YesSteveModel.LOGGER.warn("[YSM Render] Native bone matrix path failed; falling back to Java bone matrices", throwable);
+            }
+            return false;
+        }
+    }
+
     private static Matrix4f calculateBoneMatrix(int idx, GeoModel.BakedBone[] bones, float[] boneParams, Matrix4f[] cache, boolean[] visibleCache, Matrix4f rootPose) {
         GeoModel.BakedBone bone = bones[idx];
         Matrix4f parentMatrix = rootPose;
@@ -293,6 +453,48 @@ public class NativeModelRenderer {
         return localMat;
     }
 
+    private static void calculateBoneVisibility(int idx, GeoModel.BakedBone[] bones, float[] boneParams, boolean[] visibleCache) {
+        GeoModel.BakedBone bone = bones[idx];
+        boolean isVisible = true;
+        if (bone.parentIdx != -1 && !visibleCache[bone.parentIdx]) {
+            isVisible = false;
+        }
+
+        int pOffset = idx * 12;
+        float animSx = boneParams[pOffset + 6];
+        float animSy = boneParams[pOffset + 7];
+        float animSz = boneParams[pOffset + 8];
+        if (animSx == 0.0f && animSy == 0.0f && animSz == 0.0f) {
+            isVisible = false;
+        }
+        visibleCache[idx] = isVisible;
+    }
+
+    private static float nativeBoneFloat(ByteBuffer buffer, int boneIndex, int sectionOffsetBytes, int floatOffset) {
+        return buffer.getFloat((boneIndex * NATIVE_BONE_STRIDE_BYTES) + sectionOffsetBytes + (floatOffset * Float.BYTES));
+    }
+
+    private static void setNativeBoneMatrix(Matrix4f matrix, ByteBuffer buffer, int boneIndex, int sectionOffsetBytes) {
+        matrix.set(
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 0),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 1),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 2),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 3),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 4),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 5),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 6),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 7),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 8),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 9),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 10),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 11),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 12),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 13),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 14),
+                nativeBoneFloat(buffer, boneIndex, sectionOffsetBytes, 15)
+        );
+    }
+
     private static final float[] matrixTransferArray = new float[48];
     @SuppressWarnings("unused") // TODO: native中直接往VertexConsumer中的buffer写入顶点
     public static void submitVertices(VertexConsumer vertexConsumer, int vertexCount, float[] fArr, int[] iArr) {
@@ -314,12 +516,14 @@ public class NativeModelRenderer {
     @SuppressWarnings("unused") // Called from ysm-core.dll.
     public static void submitVertices(Object vertexConsumer, int vertexCount, ByteBuffer vertexData, ByteBuffer intData) {
         if (!(vertexConsumer instanceof VertexConsumer consumer) || vertexData == null || intData == null || vertexCount <= 0) {
+            NATIVE_SUBMITTED_VERTICES.set(0);
             return;
         }
 
         FloatBuffer floats = vertexData.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer();
         IntBuffer ints = intData.duplicate().order(ByteOrder.nativeOrder()).asIntBuffer();
         int count = Math.min(vertexCount, Math.min(floats.remaining() / 12, ints.remaining() / 2));
+        NATIVE_SUBMITTED_VERTICES.set(count);
 
         for (int i = 0; i < count; i++) {
             int floatIndex = i * 12;
@@ -341,6 +545,7 @@ public class NativeModelRenderer {
             float r, float g, float b, float a, boolean isPreview) {
 
         if (mesh.nativeModelHandle == 0) return 0;
+        NATIVE_SUBMITTED_VERTICES.set(0);
 
         Matrix4f projMat = net.minecraft.client.Minecraft.getInstance().gameRenderer.getProjectionMatrix(net.minecraft.client.Minecraft.getInstance().options.fov().get());
 
@@ -357,7 +562,7 @@ public class NativeModelRenderer {
                 packedLight, packedOverlay,
                 r, g, b, a
         );
-        return 0;
+        return NATIVE_SUBMITTED_VERTICES.get();
     }
 
     private static void recordProfile(long nanos, int vertexCount, boolean nativePath) {
@@ -393,9 +598,13 @@ public class NativeModelRenderer {
         private final Matrix4f projBoneMat = new Matrix4f();
         private final Matrix3f localNormalMat = new Matrix3f();
         private final Matrix3f globalNormalMat = new Matrix3f();
+        private final float[] rootPoseTransfer = new float[16];
+        private final float[] rootNormalTransfer = new float[9];
         private Matrix4f[] boneLocalTransforms = new Matrix4f[0];
         private boolean[] boneVisible = new boolean[0];
         private float[] transformedNormals = new float[0];
+        private ByteBuffer nativeBoneData;
+        private boolean usedNativeBoneMatrices;
 
         private void prepare(int boneCount) {
             this.identityMat.identity();
@@ -409,6 +618,13 @@ public class NativeModelRenderer {
             int required = normalCount * 3;
             if (this.transformedNormals.length < required) {
                 this.transformedNormals = new float[required];
+            }
+        }
+
+        private void prepareNativeBoneData(int boneCount) {
+            int required = boneCount * NATIVE_BONE_STRIDE_BYTES;
+            if (this.nativeBoneData == null || this.nativeBoneData.capacity() < required) {
+                this.nativeBoneData = ByteBuffer.allocateDirect(required).order(ByteOrder.nativeOrder());
             }
         }
     }

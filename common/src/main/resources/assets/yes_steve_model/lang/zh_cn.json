@@ -59,6 +59,7 @@
   "gui.yes_steve_model.config.loading_state_position": "加载状态界面位置",
   "gui.yes_steve_model.config.use_compatibility_renderer": "使用兼容渲染器",
   "gui.yes_steve_model.config.use_native_renderer": "使用实验性原生渲染器",
+  "gui.yes_steve_model.config.use_experimental_gpu_renderer": "使用实验性 GPU 渲染器",
   "gui.yes_steve_model.config.render_profiling": "打印渲染性能统计",
   "gui.yes_steve_model.config.self_render_order": "自身渲染顺序",
   "gui.yes_steve_model.config.other_render_order": "其他玩家渲染顺序",

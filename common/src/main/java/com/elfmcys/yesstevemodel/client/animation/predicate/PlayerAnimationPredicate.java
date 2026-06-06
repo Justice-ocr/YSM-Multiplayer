@@ -20,7 +20,7 @@ public class PlayerAnimationPredicate implements IAnimationPredicate<CustomPlaye
         if (player.getPose() == Pose.SWIMMING) {
             return PlayState.STOP;
         }
-        if (player.isFallFlying() || player.getPose() == Pose.FALL_FLYING) {
+        if (player.isFallFlying() || player.getPose() == Pose.FALL_FLYING || player.getFallFlyingTicks() > 0) {
             return PlayState.STOP;
         }
         switch (CarryOnDataHelper.getCarryType(player)) {

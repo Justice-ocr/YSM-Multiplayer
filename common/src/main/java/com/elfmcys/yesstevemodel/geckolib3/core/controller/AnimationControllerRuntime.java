@@ -27,14 +27,25 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Consumer;
 
 public class AnimationControllerRuntime<T extends AnimatableEntity<?>> implements IAnimationController<T> {
 
     private static final int MAX_DEPTH = 5;
+
+    private static final String PLAYER_POST_MAIN = "player.post_main";
+
+    private static final float POST_MAIN_IDLE_GRACE_TICKS = 1.0f;
+
+    private static final float POST_MAIN_IDLE_MAX_TICKS = 24.0f;
+
+    private static final float POST_MAIN_GROUND_RECOVERY_MAX_TICKS = 8.0f;
 
     private final T animatable;
 
@@ -68,6 +79,8 @@ public class AnimationControllerRuntime<T extends AnimatableEntity<?>> implement
     private boolean needsRebuild = false;
 
     private final IntOpenHashSet visitedEntries = new IntOpenHashSet(4);
+
+    private float currentEntryStartTick = 0.0f;
 
     @Nullable
     private String parentName = null;
@@ -122,6 +135,20 @@ public class AnimationControllerRuntime<T extends AnimatableEntity<?>> implement
             AnimationSlot slot = this.animationSlots.get(slotIndex);
             slot.getCondition().evaluate(evaluator);
             slot.getResampler().process(currentTick, evaluator, isMoving && slot.getCondition().isActive());
+        }
+        if (this.activeSlotCount != 0) {
+            while (evaluateTransitions(evaluator)) {
+                if (this.activeSlotCount != 0) {
+                    break;
+                }
+            }
+        }
+        if (shouldForcePostMainIdle(event, currentTick)) {
+            AnimationState initialState = this.animationEntries.getStates().get(this.animationEntries.getStateId());
+            if (initialState != null) {
+                updateDisplayName(initialState.getName());
+                transitionToEntry(initialState, evaluator);
+            }
         }
         if (this.needsRebuild) {
             for (int i2 = 0; i2 < this.activeSlotCount; i2++) {
@@ -244,6 +271,67 @@ public class AnimationControllerRuntime<T extends AnimatableEntity<?>> implement
         return false;
     }
 
+    private boolean shouldForcePostMainIdle(AnimationEvent<T> event, float currentTick) {
+        if (!PLAYER_POST_MAIN.equals(this.name) || this.animationEntries == null || this.currentEntry == null) {
+            return false;
+        }
+        if (this.currentEntry.getHashId() == this.animationEntries.getStateId() || this.currentEntry.isBuiltinEntry() || this.currentEntry.getSubName() != null) {
+            return false;
+        }
+        Entity entity = this.animatable.getEntity();
+        if (!(entity instanceof LivingEntity livingEntity) || !livingEntity.onGround()) {
+            return false;
+        }
+        float elapsed = currentTick - this.currentEntryStartTick;
+        if (isGroundRecoveryStateNameSafe() && elapsed >= POST_MAIN_GROUND_RECOVERY_MAX_TICKS) {
+            return true;
+        }
+        if (this.activeSlotCount == 0) {
+            return true;
+        }
+        float maxAnimationLength = 0.0f;
+        for (int slotIndex = 0; slotIndex < this.activeSlotCount; slotIndex++) {
+            AnimationSlot slot = this.animationSlots.get(slotIndex);
+            if (!slot.getCondition().isActive()) {
+                continue;
+            }
+            AnimationControllerInstance resampler = slot.getResampler();
+            if (resampler.hasPassedEnd(currentTick)) {
+                continue;
+            }
+            if (resampler.isLoopingAnimation()) {
+                return false;
+            }
+            maxAnimationLength = Math.max(maxAnimationLength, resampler.getCurrentAnimationLength());
+        }
+        float timeout = Math.min(Math.max(maxAnimationLength + POST_MAIN_IDLE_GRACE_TICKS, POST_MAIN_IDLE_GRACE_TICKS), POST_MAIN_IDLE_MAX_TICKS);
+        return elapsed >= timeout;
+    }
+
+    private boolean isGroundRecoveryState() {
+        if (this.currentEntry == null) {
+            return false;
+        }
+        String stateName = this.currentEntry.getName();
+        return stateName.contains("落地")
+                || stateName.contains("急停")
+                || stateName.contains("land")
+                || stateName.contains("stop");
+    }
+
+    private boolean isGroundRecoveryStateNameSafe() {
+        if (this.currentEntry == null) {
+            return false;
+        }
+        String stateName = this.currentEntry.getName();
+        String lowerStateName = stateName.toLowerCase(Locale.ROOT);
+        return stateName.contains("\u843d\u5730")
+                || stateName.contains("\u6025\u505c")
+                || lowerStateName.contains("land")
+                || lowerStateName.contains("stop")
+                || isGroundRecoveryState();
+    }
+
     private void transitionToEntry(@Nullable AnimationState nextState, ExpressionEvaluator<AnimationContext<?>> evaluator) {
         if (nextState == null && this.currentEntry == null) {
             return;
@@ -270,6 +358,7 @@ public class AnimationControllerRuntime<T extends AnimatableEntity<?>> implement
         }
         evaluator.entity().setIsClientSide(false);
         this.currentEntry = nextState;
+        this.currentEntryStartTick = this.animatable.getSeekTime();
         for (BoneBlendState activeBoneTransform : this.activeBoneTransforms) {
             activeBoneTransform.resetAndClear();
         }

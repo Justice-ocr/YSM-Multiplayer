@@ -55,10 +55,11 @@ public class ExtraPlayerConfigScreen extends Screen {
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 16, guiTop + 250, "disable_loading_state_screen", LoadingStateConfig.DISABLE_LOADING_STATE_SCREEN));
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 74, "use_compatibility_renderer", GeneralConfig.USE_COMPATIBILITY_RENDERER));
         addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 96, "use_native_renderer", GeneralConfig.USE_NATIVE_RENDERER));
-        addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 118, "render_profiling", GeneralConfig.RENDER_PROFILING));
-        addRenderableWidget(new LoadingStateButton(guiLeft + 230, guiTop + 144));
-        addRenderableWidget(new RenderOrderButton(guiLeft + 230, guiTop + 172, RenderOrderButton.Target.SELF));
-        addRenderableWidget(new RenderOrderButton(guiLeft + 230, guiTop + 198, RenderOrderButton.Target.OTHER));
+        addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 118, "use_experimental_gpu_renderer", GeneralConfig.USE_EXPERIMENTAL_GPU_RENDERER));
+        addRenderableWidget(ConfigCheckBoxForge.create(guiLeft + 230, guiTop + 140, "render_profiling", GeneralConfig.RENDER_PROFILING));
+        addRenderableWidget(new LoadingStateButton(guiLeft + 230, guiTop + 166));
+        addRenderableWidget(new RenderOrderButton(guiLeft + 230, guiTop + 194, RenderOrderButton.Target.SELF));
+        addRenderableWidget(new RenderOrderButton(guiLeft + 230, guiTop + 220, RenderOrderButton.Target.OTHER));
     }
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {

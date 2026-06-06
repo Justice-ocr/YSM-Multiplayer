@@ -203,7 +203,11 @@ public abstract class LivingAnimatable<T extends LivingEntity> extends GeoEntity
     @Override
     @Nullable
     public AnimationController getAnimationEntries(String str) {
-        return getModelAssembly().getAnimationBundle().getAnimationEntries().get(str);
+        AnimationController controller = getModelAssembly().getAnimationBundle().getAnimationEntries().get(str);
+        if (controller == null) {
+            controller = getModelAssembly().getAnimationBundle().getAnimationEntries().get("controller.animation." + str);
+        }
+        return controller;
     }
 
     public String getCurrentTextureName() {

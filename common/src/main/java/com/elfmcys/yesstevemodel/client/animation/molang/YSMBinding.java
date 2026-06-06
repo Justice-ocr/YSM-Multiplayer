@@ -1,6 +1,7 @@
 package com.elfmcys.yesstevemodel.client.animation.molang;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
+import com.elfmcys.yesstevemodel.client.animation.PlayerStatePredicates;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.alchemy.PotionContents;
 import rip.ysm.compat.touhoulittlemaid.TouhouLittleMaidCompat;
@@ -15,9 +16,9 @@ import com.elfmcys.yesstevemodel.geckolib3.core.molang.binding.ContextBinding;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.context.IContext;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import com.elfmcys.yesstevemodel.geckolib3.util.MathInterpolation;
+import com.elfmcys.yesstevemodel.geckolib3.util.MovementQuery;
 import com.elfmcys.yesstevemodel.mixin.client.FishingHookAccessor;
 import com.elfmcys.yesstevemodel.mixin.client.ThrowableItemProjectileAccessor;
-import com.elfmcys.yesstevemodel.geckolib3.core.EntityFrameStateTracker;
 import com.elfmcys.yesstevemodel.util.CameraUtil;
 import com.elfmcys.yesstevemodel.util.data.LazySupplier;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -50,7 +51,6 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 import dev.architectury.platform.Platform;
 import rip.ysm.api.attribute.ForgeAttributes;
 
@@ -106,7 +106,7 @@ public class YSMBinding extends ContextBinding {
         entityVar("eye_in_water", ctx -> ctx.entity().isUnderWater());
         entityVar("frozen_ticks", ctx -> ctx.entity().getTicksFrozen());
         entityVar("air_supply", ctx -> ctx.entity().getAirSupply());
-        entityVar("delta_movement_length", ctx -> ctx.entity().getDeltaMovement().length());
+        entityVar("delta_movement_length", YSMBinding::getDeltaMovementLength);
         livingEntityVar("has_helmet", ctx -> hasEquipment(ctx.entity(), EquipmentSlot.HEAD));
         livingEntityVar("has_chest_plate", ctx -> hasEquipment(ctx.entity(), EquipmentSlot.CHEST));
         livingEntityVar("has_leggings", ctx -> hasEquipment(ctx.entity(), EquipmentSlot.LEGS));
@@ -256,12 +256,23 @@ public class YSMBinding extends ContextBinding {
     }
 
     private static float getGroundSpeed2(IContext<Entity> context) {
-        EntityFrameStateTracker<?> c0269x82e473c1Mo1215x3cfc56ba = context.geoInstance().getPositionTracker();
-        Vec3 vec3M1419xc2097f01 = c0269x82e473c1Mo1215x3cfc56ba.getPositionDelta();
-        return (20.0f * Mth.sqrt((float) ((vec3M1419xc2097f01.x * vec3M1419xc2097f01.x) + (vec3M1419xc2097f01.z * vec3M1419xc2097f01.z)))) / c0269x82e473c1Mo1215x3cfc56ba.getTimeDelta();
+        if (context.entity() instanceof LivingEntity livingEntity) {
+            return PlayerStatePredicates.getGroundSpeed(livingEntity, context.animationEvent());
+        }
+        return MovementQuery.getMeasuredGroundSpeed(context.entity(), context.geoInstance().getPositionTracker());
+    }
+
+    private static double getDeltaMovementLength(IContext<Entity> context) {
+        if (context.entity() instanceof LivingEntity livingEntity && PlayerStatePredicates.isStationaryLocalPlayer(livingEntity, context.animationEvent())) {
+            return 0.0d;
+        }
+        return context.entity().getDeltaMovement().length();
     }
 
     private static float getXxa(IContext<LivingEntity> context) {
+        if (PlayerStatePredicates.isStationaryLocalPlayer(context.entity(), context.animationEvent())) {
+            return 0.0f;
+        }
         AnimatableEntity<?> abstractC0235x5da32a01Mo322x83eb685f = context.geoInstance();
         if (abstractC0235x5da32a01Mo322x83eb685f instanceof PlayerCapability playerCapability) {
             if (!playerCapability.isLocalPlayerModel()) {
@@ -282,6 +293,9 @@ public class YSMBinding extends ContextBinding {
     }
 
     private static float getZza(IContext<LivingEntity> context) {
+        if (PlayerStatePredicates.isStationaryLocalPlayer(context.entity(), context.animationEvent())) {
+            return 0.0f;
+        }
         AnimatableEntity<?> abstractC0235x5da32a01Mo322x83eb685f = context.geoInstance();
         if (abstractC0235x5da32a01Mo322x83eb685f instanceof PlayerCapability playerCapability) {
             if (!playerCapability.isLocalPlayerModel()) {

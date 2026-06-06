@@ -54,10 +54,18 @@ public class CustomPlayerElytraLayer extends GeoLayerRenderer<CustomPlayerEntity
             poseStack.translate(0.0d, 1.5d, 0.0d);
             poseStack.mulPose(Axis.ZP.rotationDegrees(180.0f));
             poseStack.scale(2.0f, 2.0f, 2.0f);
+            syncElytraState(state, abstractClientPlayer);
             this.elytraModel.setupAnim(state);
             this.elytraModel.renderToBuffer(poseStack, ItemRenderer.getArmorFoilBuffer(bufferSource, RenderType.armorCutoutNoCull(cloakTextureLocation), stack.hasFoil()), packedLightIn, OverlayTexture.NO_OVERLAY, -1);
             poseStack.popPose();
         }
+    }
+
+    private static void syncElytraState(PlayerRenderState state, AbstractClientPlayer player) {
+        state.isFallFlying = player.isFallFlying() || player.getPose() == net.minecraft.world.entity.Pose.FALL_FLYING || player.getFallFlyingTicks() > 0;
+        state.elytraRotX = player.elytraRotX;
+        state.elytraRotY = player.elytraRotY;
+        state.elytraRotZ = player.elytraRotZ;
     }
 
     public void renderElytra(PoseStack poseStack, AnimatedGeoModel model) {

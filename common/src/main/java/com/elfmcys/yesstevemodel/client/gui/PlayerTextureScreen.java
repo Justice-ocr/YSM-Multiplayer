@@ -9,7 +9,6 @@ import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
 import com.elfmcys.yesstevemodel.client.renderer.CustomPlayerRenderer;
 import com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer;
 import com.elfmcys.yesstevemodel.client.renderer.RendererManager;
-import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import com.elfmcys.yesstevemodel.mixin.client.ScreenAccessor;
 import com.elfmcys.yesstevemodel.util.data.OrderedStringMap;
 import com.google.common.collect.Lists;
@@ -104,7 +103,7 @@ public class PlayerTextureScreen extends Screen {
 
     public PlayerTextureScreen(PlayerModelScreen modelScreen, String str, ModelAssembly modelAssembly) {
         super(Component.literal("Player Texture GUI"));
-        this.currentAnimation = StringPool.EMPTY;
+        this.currentAnimation = "idle";
         this.offsetX = 0.0f;
         this.offsetY = -60.0f;
         this.zoom = 80.0f;

@@ -29,6 +29,8 @@ public class S2CSyncPlayerStatePacket {
 
     public boolean isFlying;
 
+    public boolean isFallFlying;
+
     public Object2ByteMap<Holder<MobEffect>> effectAmplifiers;
 
     public int experienceLevel;
@@ -81,6 +83,12 @@ public class S2CSyncPlayerStatePacket {
     public S2CSyncPlayerStatePacket setFlying(boolean isFlying) {
         this.flags = (short) (this.flags | 2);
         this.isFlying = isFlying;
+        return this;
+    }
+
+    public S2CSyncPlayerStatePacket setFallFlying(boolean isFallFlying) {
+        this.flags = (short) (this.flags | 8192);
+        this.isFallFlying = isFallFlying;
         return this;
     }
 
@@ -180,6 +188,9 @@ public class S2CSyncPlayerStatePacket {
         if ((flags & 2) != 0) {
             buffer.writeBoolean(message.isFlying);
         }
+        if ((flags & 8192) != 0) {
+            buffer.writeBoolean(message.isFallFlying);
+        }
         if ((flags & 4) != 0) {
             buffer.writeVarInt(message.effectAmplifiers.size());
             Object2ByteMaps.fastForEach(message.effectAmplifiers, entry -> {
@@ -231,6 +242,9 @@ public class S2CSyncPlayerStatePacket {
         message.flags = flags;
         if ((flags & 2) != 0) {
             message.isFlying = buffer.readBoolean();
+        }
+        if ((flags & 8192) != 0) {
+            message.isFallFlying = buffer.readBoolean();
         }
         if ((flags & 4) != 0) {
             int effectCount = buffer.readVarInt();

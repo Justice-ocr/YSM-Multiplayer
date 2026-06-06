@@ -24,6 +24,8 @@ public class GeneralConfig {
 
     public static ForgeConfigSpec.BooleanValue USE_NATIVE_RENDERER;
 
+    public static ForgeConfigSpec.BooleanValue USE_EXPERIMENTAL_GPU_RENDERER;
+
     public static ForgeConfigSpec.BooleanValue RENDER_PROFILING;
 
     public static ForgeConfigSpec.ConfigValue<String> SELF_PLAYER_RENDER_ORDER;
@@ -77,6 +79,8 @@ public class GeneralConfig {
         USE_COMPATIBILITY_RENDERER = builder.define("UseCompatibilityRenderer", false);
         builder.comment("Experimental: use native SIMD model renderer when native cache is available.");
         USE_NATIVE_RENDERER = builder.define("UseNativeRenderer", false);
+        builder.comment("Experimental: use the direct GPU model renderer when the native mesh and OpenGL SSBO path are available.");
+        USE_EXPERIMENTAL_GPU_RENDERER = builder.define("UseExperimentalGpuRenderer", false);
         builder.comment("Print model renderer performance statistics to the log.");
         RENDER_PROFILING = builder.define("RenderProfiling", false);
         builder.comment("Comma separated self player render order. Supported values: VANILLA, LOCAL_YSM, SERVER_YSM.");

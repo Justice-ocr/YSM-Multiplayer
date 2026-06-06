@@ -16,6 +16,8 @@ public class EntityFrameStateTracker<T extends Entity> {
 
     private String cachedModelId;
 
+    private int cachedModelIdTick = Integer.MIN_VALUE;
+
     public float currentTime;
 
     public float timeDelta;
@@ -34,6 +36,7 @@ public class EntityFrameStateTracker<T extends Entity> {
         this.lastPosition = null;
         this.positionDelta = Vec3.ZERO;
         this.cachedModelId = null;
+        this.cachedModelIdTick = Integer.MIN_VALUE;
         this.currentTime = 0.0f;
         this.timeDelta = 0.0f;
     }
@@ -57,6 +60,7 @@ public class EntityFrameStateTracker<T extends Entity> {
         this.timeDelta = f - f2;
         updatePosition(f3);
         this.cachedModelId = null;
+        this.cachedModelIdTick = Integer.MIN_VALUE;
     }
 
     public void onTickUpdate(int i, int i2) {
@@ -90,6 +94,17 @@ public class EntityFrameStateTracker<T extends Entity> {
 
     public void setCachedModelId(String str) {
         this.cachedModelId = str;
+        this.cachedModelIdTick = Integer.MIN_VALUE;
+    }
+
+    @Nullable
+    public String getCachedModelId(int tickCount) {
+        return this.cachedModelIdTick == tickCount ? this.cachedModelId : null;
+    }
+
+    public void setCachedModelId(String str, int tickCount) {
+        this.cachedModelId = str;
+        this.cachedModelIdTick = tickCount;
     }
 
     public float getTimeDelta() {

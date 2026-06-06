@@ -52,7 +52,6 @@ public abstract class PlayerRendererMixin extends LivingEntityRenderer<AbstractC
             return;
         }
 
-        boolean attemptedYsm = false;
         float partialTick = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true);
         List<PlayerRenderPolicy.Layer> renderOrder = PlayerRenderPolicy.getOrder(player);
         for (PlayerRenderPolicy.Layer layer : renderOrder) {
@@ -60,14 +59,13 @@ public abstract class PlayerRendererMixin extends LivingEntityRenderer<AbstractC
                 super.render(livingEntityRenderState, poseStack, multiBufferSource, packedLight);
                 return;
             } else {
-                attemptedYsm = true;
                 if (ReplacePlayerRenderEvent.renderYsmLayer(layer, player, livingEntityRenderState, partialTick, poseStack, multiBufferSource, packedLight)) {
                     return;
                 }
             }
         }
 
-        if (!attemptedYsm) {
+        if (!PlayerRenderPolicy.shouldSuppressVanillaFallback(player)) {
             super.render(livingEntityRenderState, poseStack, multiBufferSource, packedLight);
         }
     }

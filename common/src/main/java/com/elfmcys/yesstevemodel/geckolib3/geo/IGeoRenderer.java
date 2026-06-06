@@ -27,11 +27,15 @@ public interface IGeoRenderer<T extends AnimatableEntity<?>> {
     }
 
     default void renderWithBoneAndRenderType(AnimatedGeoModel model, T animatable, float partialTick, RenderType renderType, PoseStack poseStack, @Nullable MultiBufferSource bufferSource, int i, @Nullable VertexConsumer vertexConsumer, int i2, int i3, float f2, float f3, float f4, float f5) {
+        renderWithBoneAndRenderType(model, animatable, partialTick, renderType, poseStack, bufferSource, i, vertexConsumer, i2, i3, f2, f3, f4, f5, animatable.getTextureLocation());
+    }
+
+    default void renderWithBoneAndRenderType(AnimatedGeoModel model, T animatable, float partialTick, RenderType renderType, PoseStack poseStack, @Nullable MultiBufferSource bufferSource, int i, @Nullable VertexConsumer vertexConsumer, int i2, int i3, float f2, float f3, float f4, float f5, @Nullable ResourceLocation textureLocation) {
         if (vertexConsumer == null) {
             vertexConsumer = bufferSource.getBuffer(renderType);
         }
         animatable.resetAnimationState();
-        NativeModelRenderer.renderMesh(vertexConsumer, poseStack.last(), model.getGeoModel(), model.getMatrixData(), model.getAbsPivotData(), i, 0, i2, i3, f2, f3, f4, f5);
+        NativeModelRenderer.renderMesh(vertexConsumer, poseStack.last(), model.getGeoModel(), model.getMatrixData(), model.getAbsPivotData(), i, 0, i2, i3, f2, f3, f4, f5, textureLocation);
         setCurrentModelRenderCycle(EModelRenderCycle.REPEATED);
     }
 

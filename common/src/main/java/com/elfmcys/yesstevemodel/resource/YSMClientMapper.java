@@ -1,6 +1,7 @@
 package com.elfmcys.yesstevemodel.resource;
 
 import com.elfmcys.yesstevemodel.NativeLibLoader;
+import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.audio.AudioCodec;
 import com.elfmcys.yesstevemodel.audio.AudioTrackData;
 import com.elfmcys.yesstevemodel.client.ClientModelInfo;
@@ -17,6 +18,7 @@ import com.elfmcys.yesstevemodel.geckolib3.core.builder.AnimationController;
 import com.elfmcys.yesstevemodel.geckolib3.core.builder.AnimationState;
 import com.elfmcys.yesstevemodel.geckolib3.core.builder.ILoopType;
 import com.elfmcys.yesstevemodel.geckolib3.core.event.ParticleEventKeyFrame;
+import com.elfmcys.yesstevemodel.geckolib3.geo.LayerTypeConstants;
 import com.elfmcys.yesstevemodel.geckolib3.core.keyframe.BoneAnimation;
 import com.elfmcys.yesstevemodel.geckolib3.core.keyframe.bone.BoneKeyFrame;
 import com.elfmcys.yesstevemodel.geckolib3.core.keyframe.bone.BoneKeyFrameProcessor;
@@ -60,6 +62,39 @@ import java.util.*;
 import java.util.stream.IntStream;
 
 public class YSMClientMapper {
+    private static final String PLAYER_POST_MAIN = "player.post_main";
+    private static final String BEDROCK_PLAYER_POST_MAIN = "controller.animation.player.post_main";
+    private static final String PLAYER_ARMOR_CHEST = "player.armor_chest";
+    private static final String BEDROCK_PLAYER_ARMOR_CHEST = "controller.animation.player.armor_chest";
+    private static final String YSM_ELYTRA_WEAR_HOLD = "ysm_elytra_wear_hold";
+
+    private static final Set<String> FIRST_PERSON_LEFT_EXTRA_ROOTS = Set.of(
+            "LeftExtra",
+            "LeftBow",
+            "LeftBowGroup",
+            "LeftFumo",
+            "LeftSpear",
+            "LeftSword"
+    );
+
+    private static final Set<String> FIRST_PERSON_RIGHT_EXTRA_ROOTS = Set.of(
+            "RightExtra",
+            "RightBow",
+            "RightBowGroup",
+            "RightFumo",
+            "RightSpear",
+            "RightSword"
+    );
+
+    private static final Set<String> FIRST_PERSON_SHARED_EXTRA_ROOTS = Set.of(
+            "BackSword",
+            "RightBowSERot",
+            "MSwordSE",
+            "Spear",
+            "SE",
+            "SwordSE",
+            "CrossbowArrow"
+    );
 
     private static byte[] toPng(byte[] data, int imageFormat, int width, int height) {
         if (data == null || data.length == 0 || imageFormat == 2) {
@@ -146,6 +181,7 @@ public class YSMClientMapper {
         for (Map.Entry<String, RawYsmModel.RawAnimationFile> entry : raw.mainEntity.animationFiles.entrySet()) {
             animations.put(entry.getKey(), new AnimationFile(buildAnimations(entry.getValue(), raw.properties.mergeMultilineExpr)));
         }
+        stabilizeLegacyElytraArmorIdle(raw, animations, modelId);
 
         List<AnimationControllerFile> controllersList = new ArrayList<>();
         if (raw.mainEntity.animationControllerFiles != null) {
@@ -156,7 +192,6 @@ public class YSMClientMapper {
                 }
             }
         }
-
         MainModelData mainModelData = new MainModelData(meshes, animations, controllersList.toArray(new AnimationControllerFile[0]), textureMap);
 
         ServerModelInfo modelInfo = buildModelInfo(raw/*, modelId*/);
@@ -166,6 +201,147 @@ public class YSMClientMapper {
         Map<String, OuterFileTexture> extraTextures = buildExtraTextures(raw);
 
         return new ClientModelInfo(mainModelData, extraItemModels, extraEntityModels, extraResources, modelInfo, avatarTextures, extraTextures);
+    }
+
+    private static Map<String, Animation> flattenAnimations(Map<String, AnimationFile> animations) {
+        Map<String, Animation> flattened = new LinkedHashMap<>();
+        for (AnimationFile animationFile : animations.values()) {
+            flattened.putAll(animationFile.getAnimations());
+        }
+        return flattened;
+    }
+
+    private static void stabilizeLegacyElytraArmorIdle(RawYsmModel raw,
+                                                       Map<String, AnimationFile> animations,
+                                                       String modelId) {
+        if (hasRawController(raw, PLAYER_POST_MAIN) || hasRawController(raw, BEDROCK_PLAYER_POST_MAIN)) {
+            return;
+        }
+        RawYsmModel.RawAnimationController armorController = findRawController(raw, PLAYER_ARMOR_CHEST, BEDROCK_PLAYER_ARMOR_CHEST);
+        if (armorController == null) {
+            return;
+        }
+        Map<String, Animation> flattened = flattenAnimations(animations);
+        String wearAnimation = findElytraWearAnimation(flattened.keySet());
+        if (wearAnimation == null || !flattened.containsKey(wearAnimation)) {
+            return;
+        }
+        boolean patched = false;
+        for (RawYsmModel.RawControllerState state : armorController.states) {
+            if (!state.animations.containsKey(wearAnimation)) {
+                continue;
+            }
+            for (String targetStateName : state.transitions.keySet()) {
+                RawYsmModel.RawControllerState targetState = findRawState(armorController, targetStateName);
+                if (targetState != null && targetState.animations.isEmpty()) {
+                    targetState.animations.put(YSM_ELYTRA_WEAR_HOLD, "");
+                    patched = true;
+                }
+            }
+        }
+        if (!patched) {
+            for (RawYsmModel.RawControllerState state : armorController.states) {
+                if (state.animations.isEmpty() && containsAnyIgnoreCase(state.name, "idle")) {
+                    state.animations.put(YSM_ELYTRA_WEAR_HOLD, "");
+                    patched = true;
+                }
+            }
+        }
+        if (patched && !flattened.containsKey(YSM_ELYTRA_WEAR_HOLD)) {
+            animations.put(YSM_ELYTRA_WEAR_HOLD,
+                    new AnimationFile(Map.of(YSM_ELYTRA_WEAR_HOLD, createHoldAnimation(flattened.get(wearAnimation), YSM_ELYTRA_WEAR_HOLD))));
+        }
+    }
+
+    private static boolean hasRawController(RawYsmModel raw, String... controllerNames) {
+        return findRawController(raw, controllerNames) != null;
+    }
+
+    private static RawYsmModel.RawAnimationController findRawController(RawYsmModel raw, String... controllerNames) {
+        if (raw.mainEntity.animationControllerFiles == null) {
+            return null;
+        }
+        Set<String> names = Set.of(controllerNames);
+        for (RawYsmModel.RawAnimationControllerFile file : raw.mainEntity.animationControllerFiles) {
+            for (Map.Entry<String, RawYsmModel.RawAnimationController> entry : file.controllers.entrySet()) {
+                RawYsmModel.RawAnimationController controller = entry.getValue();
+                if (names.contains(entry.getKey()) || names.contains(controller.animationName)) {
+                    return controller;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static RawYsmModel.RawControllerState findRawState(RawYsmModel.RawAnimationController controller, String stateName) {
+        for (RawYsmModel.RawControllerState state : controller.states) {
+            if (state.name.equals(stateName)) {
+                return state;
+            }
+        }
+        return null;
+    }
+
+    private static String findElytraWearAnimation(Collection<String> animationNames) {
+        String preferred = findFirst(animationNames, name -> containsAnyIgnoreCase(name, "\u9798\u7fc5", "elytra", "wing")
+                && containsAnyIgnoreCase(name, "\u7a7f\u6234", "wear", "equip"));
+        if (preferred != null) {
+            return preferred;
+        }
+        return findFirst(animationNames, name -> containsAnyIgnoreCase(name, "\u7a7f\u6234", "wear", "equip"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Animation createHoldAnimation(Animation source, String name) {
+        return new Animation(
+                name,
+                source.animationLength,
+                ILoopType.EDefaultLoopTypes.HOLD_ON_LAST_FRAME,
+                source.unKnowData1,
+                source.unKnowData2,
+                source.blendWeight,
+                source.override,
+                source.boneAnimations.toArray(new BoneAnimation[0]),
+                source.soundKeyFrames.toArray(new EventKeyFrame[0]),
+                source.particleKeyFrames.toArray(new ParticleEventKeyFrame[0]),
+                source.customInstructionKeyframes.toArray(new EventKeyFrame[0])
+        );
+    }
+
+    private static String findFirst(Collection<String> names, java.util.function.Predicate<String> predicate) {
+        for (String name : names) {
+            if (predicate.test(name)) {
+                return name;
+            }
+        }
+        return null;
+    }
+
+    private static boolean containsAnyIgnoreCase(String text, String... needles) {
+        String lowerText = text.toLowerCase(Locale.ROOT);
+        for (String needle : needles) {
+            if (lowerText.contains(needle.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String joinMatchingAnimationNames(Collection<String> animationNames) {
+        StringBuilder builder = new StringBuilder();
+        for (String name : animationNames) {
+            if (containsAnyIgnoreCase(name, "鞘翅", "飞行", "滑翔", "elytra", "flight", "glide")) {
+                appendCsv(builder, name);
+            }
+        }
+        return builder.toString();
+    }
+
+    private static void appendCsv(StringBuilder builder, String value) {
+        if (builder.length() > 0) {
+            builder.append(", ");
+        }
+        builder.append(value);
     }
 
     private static GeoModel buildMesh(RawYsmModel.RawGeometry rawGeo, GeometryDescription context, int textureCount) {
@@ -265,17 +441,37 @@ public class YSMClientMapper {
                     }
                 }
             }
-            if (b.name.equals("LeftArm")) b.partMask = 1;
-            else if (b.name.equals("RightArm")) b.partMask = 2;
-            else if (b.name.equals("Background")) b.partMask = 3;
-            else if (b.parentIdx != -1) b.partMask = bakedBones.get(b.parentIdx).partMask;
-            else b.partMask = 0;
+            b.partMask = getExplicitPartMask(b.name);
+        }
+        for (int i = 0; i < bakedBones.size(); i++) {
+            resolvePartMask(bakedBones, i, new boolean[bakedBones.size()]);
         }
 
         GeoModel mesh = buildMesh(geoBones.toArray(new GeoBone[0]), parentMap, context, textureCount);
         mesh.bakedBones = bakedBones;
         if (NativeLibLoader.isLoaded()) mesh.buildNativeCache();
         return mesh;
+    }
+
+    private static int getExplicitPartMask(String boneName) {
+        if (boneName.equals("LeftArm")) return LayerTypeConstants.TYPE_LEFT;
+        if (boneName.equals("RightArm")) return LayerTypeConstants.TYPE_RIGHT;
+        if (boneName.equals("Background")) return 3;
+        if (FIRST_PERSON_LEFT_EXTRA_ROOTS.contains(boneName)) return LayerTypeConstants.TYPE_FIRST_PERSON_LEFT_EXTRA;
+        if (FIRST_PERSON_RIGHT_EXTRA_ROOTS.contains(boneName)) return LayerTypeConstants.TYPE_FIRST_PERSON_RIGHT_EXTRA;
+        if (FIRST_PERSON_SHARED_EXTRA_ROOTS.contains(boneName)) return LayerTypeConstants.TYPE_FIRST_PERSON_SHARED_EXTRA;
+        return 0;
+    }
+
+    private static int resolvePartMask(List<GeoModel.BakedBone> bakedBones, int boneIndex, boolean[] visiting) {
+        GeoModel.BakedBone bone = bakedBones.get(boneIndex);
+        if (bone.partMask != 0 || bone.parentIdx == -1 || visiting[boneIndex]) {
+            return bone.partMask;
+        }
+        visiting[boneIndex] = true;
+        bone.partMask = resolvePartMask(bakedBones, bone.parentIdx, visiting);
+        visiting[boneIndex] = false;
+        return bone.partMask;
     }
 
     private static Map<String, Animation> buildAnimations(RawYsmModel.RawAnimationFile animFile, boolean mergeMultilineExpr) {

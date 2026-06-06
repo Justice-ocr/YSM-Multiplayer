@@ -15,9 +15,16 @@ public class PlayerGeoEntity extends GeoEntity<LocalPlayer> {
 
     private final PlayerCapability playerCapability;
 
+    private final boolean firstPersonAttachmentModel;
+
     public PlayerGeoEntity(LocalPlayer player, PlayerCapability capability) {
+        this(player, capability, false);
+    }
+
+    public PlayerGeoEntity(LocalPlayer player, PlayerCapability capability, boolean firstPersonAttachmentModel) {
         super(player, false);
         this.playerCapability = capability;
+        this.firstPersonAttachmentModel = firstPersonAttachmentModel;
         setModelId(capability.getModelId());
     }
 
@@ -51,7 +58,11 @@ public class PlayerGeoEntity extends GeoEntity<LocalPlayer> {
     @Override
     @Nullable
     public AnimationController getAnimationEntries(String str) {
-        return getModelAssembly().getAnimationBundle().getAnimationEntries().get(str);
+        AnimationController controller = getModelAssembly().getAnimationBundle().getAnimationEntries().get(str);
+        if (controller == null) {
+            controller = getModelAssembly().getAnimationBundle().getAnimationEntries().get("controller.animation." + str);
+        }
+        return controller;
     }
 
     @Override
@@ -72,6 +83,10 @@ public class PlayerGeoEntity extends GeoEntity<LocalPlayer> {
     @Override
     @Nullable
     public Animation getAnimation(String str) {
+        if (this.firstPersonAttachmentModel) {
+            Animation armAnimation = getModelAssembly().getAnimationBundle().getArmAnimations().get(str);
+            return armAnimation != null ? armAnimation : getModelAssembly().getAnimationBundle().getMainAnimations().get(str);
+        }
         return getModelAssembly().getAnimationBundle().getArmAnimations().get(str);
     }
 
@@ -81,11 +96,15 @@ public class PlayerGeoEntity extends GeoEntity<LocalPlayer> {
 
     @Override
     public GeoModel getAnimationProcessor() {
+        if (this.firstPersonAttachmentModel) {
+            return getModelAssembly().getAnimationBundle().getMainModel();
+        }
         return getModelAssembly().getAnimationBundle().getArmModel();
     }
 
     @Override
     public void setupAnim(float seekTime, boolean isFirstPerson) {
+        super.setupAnim(seekTime, isFirstPerson);
         getEvaluationContext().setRoamingProperties(this.playerCapability.getServerVarContainer());
     }
 }

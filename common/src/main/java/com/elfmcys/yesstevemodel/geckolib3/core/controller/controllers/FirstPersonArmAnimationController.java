@@ -2,6 +2,8 @@ package com.elfmcys.yesstevemodel.geckolib3.core.controller.controllers;
 
 import com.elfmcys.yesstevemodel.client.animation.condition.ConditionArmor;
 import com.elfmcys.yesstevemodel.client.animation.predicate.EquipmentSlotAnimationPredicate;
+import com.elfmcys.yesstevemodel.client.animation.predicate.FirstPersonHandAnimationPredicate;
+import com.elfmcys.yesstevemodel.client.animation.predicate.FirstPersonPlayerAnimationPredicate;
 import com.elfmcys.yesstevemodel.client.animation.predicate.NamedAnimationPredicate;
 import com.elfmcys.yesstevemodel.client.entity.PlayerGeoEntity;
 import com.elfmcys.yesstevemodel.client.model.PlayerModelBundle;
@@ -11,6 +13,7 @@ import com.elfmcys.yesstevemodel.geckolib3.core.controller.IAnimationController;
 import com.elfmcys.yesstevemodel.client.entity.IPreviewAnimatable;
 import com.elfmcys.yesstevemodel.client.model.AnimationDataProvider;
 import com.elfmcys.yesstevemodel.client.animation.StopAnimationPredicate;
+import com.elfmcys.yesstevemodel.client.animation.IAnimationPredicate;
 import com.elfmcys.yesstevemodel.geckolib3.core.builder.AnimationController;
 import com.elfmcys.yesstevemodel.client.model.ModelResourceBundle;
 import com.elfmcys.yesstevemodel.geckolib3.core.controller.CompositeAnimationController;
@@ -30,8 +33,20 @@ public class FirstPersonArmAnimationController {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static void registerDefaultProcessors() {
+        registerSimpleProcessor("pre_hide", (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.0f, (event, evaluator) -> {
+            if (event.getAnimatable().getAnimation("pre_parallel2") == null) {
+                return com.elfmcys.yesstevemodel.geckolib3.core.enums.PlayState.STOP;
+            }
+            return IAnimationPredicate.playLoopAnimation(event, "pre_parallel2");
+        }));
+        registerSimpleProcessor("main", (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.1f, new FirstPersonPlayerAnimationPredicate()));
+        registerSimpleProcessor("hold_offhand", (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.1f, FirstPersonHandAnimationPredicate.holdOffhand()));
+        registerSimpleProcessor("hold_mainhand", (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.1f, FirstPersonHandAnimationPredicate.holdMainhand()));
+        registerSimpleProcessor("swing", (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.0f, FirstPersonHandAnimationPredicate.swing()));
+        registerSimpleProcessor("use", (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.1f, FirstPersonHandAnimationPredicate.use()));
         registerNamedProcessor("misc", null, true, (animationEntryKey, entity) -> new CompositeAnimationController(entity, animationEntryKey, 0.0f, new StopAnimationPredicate()));
         registerParallelProcessor("parallel", (animationEntryKey, entity, linkedAnimationName) -> new CompositeAnimationController(entity, animationEntryKey, 0.0f, linkedAnimationName != null ? new NamedAnimationPredicate(linkedAnimationName) : StopAnimationPredicate.INSTANCE, true));
+        registerPlayerParallelProcessor((animationEntryKey, entity, linkedAnimationName) -> new CompositeAnimationController(entity, animationEntryKey, 0.0f, linkedAnimationName != null ? new NamedAnimationPredicate(linkedAnimationName) : StopAnimationPredicate.INSTANCE, true));
         registerArmorProcessor("armor", (animationEntryKey, entity, equipmentSlot) -> new CompositeAnimationController(entity, animationEntryKey, 0.0f, new EquipmentSlotAnimationPredicate(equipmentSlot)));
     }
 
@@ -71,6 +86,10 @@ public class FirstPersonArmAnimationController {
         processorRegistry.register(new ParallelProcessor(FP_ARM_PREFIX, slotName, true, DefaultBoneExpressionProvider.INSTANCE, controllerFactory));
     }
 
+    private static void registerPlayerParallelProcessor(TriFunction<String, PlayerGeoEntity, String, IAnimationController<PlayerGeoEntity>> controllerFactory) {
+        processorRegistry.register(new ParallelProcessor("player", "parallel", true, FirstPersonPlayerExpressionProvider.INSTANCE, controllerFactory));
+    }
+
     private static void registerArmorProcessor(String category, TriFunction<String, PlayerGeoEntity, EquipmentSlot, IAnimationController<PlayerGeoEntity>> controllerFactory) {
         processorRegistry.register(new ArmorSlotProcessor(FP_ARM_PREFIX, category, DefaultBoneExpressionProvider.INSTANCE, controllerFactory));
     }
@@ -80,6 +99,29 @@ public class FirstPersonArmAnimationController {
         public static final DefaultBoneExpressionProvider INSTANCE = new DefaultBoneExpressionProvider();
 
         private DefaultBoneExpressionProvider() {
+        }
+
+        @Override
+        public Object2ReferenceMap<String, AnimationController> getAnimationEntries(PlayerModelBundle modelBundle, ModelResourceBundle resourceBundle) {
+            return modelBundle.getAnimationEntries();
+        }
+
+        @Override
+        public Object2ReferenceMap<String, Animation> getAnimations(PlayerModelBundle modelBundle, ModelResourceBundle resourceBundle) {
+            return modelBundle.getArmAnimations();
+        }
+
+        @Override
+        public ConditionArmor getConditionArmor(PlayerModelBundle modelBundle, ModelResourceBundle resourceBundle) {
+            return modelBundle.getModelProcessor().getConditionArmor();
+        }
+    }
+
+    private static class FirstPersonPlayerExpressionProvider implements AnimationDataProvider<PlayerModelBundle> {
+
+        public static final FirstPersonPlayerExpressionProvider INSTANCE = new FirstPersonPlayerExpressionProvider();
+
+        private FirstPersonPlayerExpressionProvider() {
         }
 
         @Override

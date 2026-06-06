@@ -131,10 +131,8 @@ public final class PlayerCapability extends CustomPlayerEntity {
     public void resetHeadTracking(boolean wasAnimEvaluated) {
         super.resetHeadTracking(wasAnimEvaluated);
         AnimatedGeoModel model2 = getCurrentModel();
-        if (model2 != null && isLocalPlayerModel()) {
-            if ((FirstPersonCompat.isLoaded() || BetterCombatCompat.isLoaded()) && model2.allHeadBone() != null) {
-                model2.allHeadBone().setHidden(false);
-            }
+        if (model2 != null && isLocalPlayerModel() && (FirstPersonCompat.isLoaded() || BetterCombatCompat.isLoaded()) && model2.allHeadBone() != null) {
+            model2.allHeadBone().setHidden(false);
         }
     }
 
