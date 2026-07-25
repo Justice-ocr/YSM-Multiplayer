@@ -19,12 +19,12 @@ public class InputStateKey {
         if (PlatformAPI.isServer()) {
             return;
         }
-        ClientRawInputEvent.KEY_PRESSED.register((client, keyCode, scanCode, action, modifiers) -> {
-            onKeyInput(keyCode, action);
+        ClientRawInputEvent.KEY_PRESSED.register((client, action, event) -> {
+            onKeyInput(event.key(), action);
             return EventResult.pass();
         });
-        ClientRawInputEvent.MOUSE_CLICKED_PRE.register((client, button, action, mods) -> {
-            onMouseInput(button, action);
+        ClientRawInputEvent.MOUSE_CLICKED_PRE.register((client, buttonInfo, action) -> {
+            onMouseInput(buttonInfo.button(), action);
             return EventResult.pass();
         });
     }

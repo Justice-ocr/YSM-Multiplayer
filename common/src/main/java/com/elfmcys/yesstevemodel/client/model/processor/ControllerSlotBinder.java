@@ -12,7 +12,6 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 public class ControllerSlotBinder<T extends GeoEntity<?>, TModel> implements ModelProcessor<T, TModel> {
-    private static final String BEDROCK_CONTROLLER_PREFIX = "controller.animation.";
 
     private final Predicate<String> controllerNameMatcher;
 
@@ -33,9 +32,8 @@ public class ControllerSlotBinder<T extends GeoEntity<?>, TModel> implements Mod
     public ControllerFactory<T> process(TModel modelData, ModelResourceBundle resourceBundle) {
         ObjectRBTreeSet<String> controllerNames = new ObjectRBTreeSet<>();
         Object2ReferenceMaps.fastForEach(this.animationDataProvider.getAnimationEntries(modelData, resourceBundle), entry -> {
-            String controllerName = normalizeControllerName(entry.getKey());
-            if (this.controllerNameMatcher.test(controllerName)) {
-                controllerNames.add(controllerName);
+            if (this.controllerNameMatcher.test(entry.getKey())) {
+                controllerNames.add(entry.getKey());
             }
         });
         Object2ReferenceMaps.fastForEach(resourceBundle.getEvents(), entry -> {
@@ -48,12 +46,5 @@ public class ControllerSlotBinder<T extends GeoEntity<?>, TModel> implements Mod
                 consumer.accept(this.controllerFactory.apply(controllerName, entity));
             }
         };
-    }
-
-    private static String normalizeControllerName(String controllerName) {
-        if (controllerName.startsWith(BEDROCK_CONTROLLER_PREFIX)) {
-            return controllerName.substring(BEDROCK_CONTROLLER_PREFIX.length());
-        }
-        return controllerName;
     }
 }

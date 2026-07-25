@@ -1,7 +1,6 @@
 package com.elfmcys.yesstevemodel.client.animation.molang;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
-import com.elfmcys.yesstevemodel.client.animation.PlayerStatePredicates;
 import com.elfmcys.yesstevemodel.client.animation.Priority;
 import rip.ysm.compat.immersivemelodies.ImmersiveMelodiesCompat;
 import rip.ysm.compat.ironsspellbooks.SpellbooksCompat;
@@ -26,6 +25,7 @@ import com.elfmcys.yesstevemodel.geckolib3.core.EntityFrameStateTracker;
 import com.elfmcys.yesstevemodel.util.data.LazySupplier;
 import rip.ysm.compat.create.CreateCompat;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
+import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
@@ -44,20 +44,20 @@ public class CtrlBinding extends ContextBinding {
         registerLivingEntityState("riptide", Priority.HIGHEST, LivingEntity::isAutoSpinAttack);
         registerLivingEntityState("sleep", Priority.HIGHEST, entity -> entity.getPose() == Pose.SLEEPING);
         registerLivingEntityState("swim", Priority.HIGHEST, Entity::isSwimming);
-        registerState("climb", Priority.HIGHEST, context -> context.entity().getPose() == Pose.SWIMMING && isWalking(context));
+        registerLivingEntityState("climb", Priority.HIGHEST, entity -> entity.getPose() == Pose.SWIMMING && isWalking(entity));
         registerLivingEntityState("climbing", Priority.HIGHEST, entity -> entity.getPose() == Pose.SWIMMING);
         registerLivingEntityState("ladder_up", Priority.HIGHEST, entity -> entity.onClimbable() && getVerticalVelocity(entity) > 0.0f);
         registerLivingEntityState("ladder_stillness", Priority.HIGHEST, entity -> entity.onClimbable() && getVerticalVelocity(entity) == 0.0f);
         registerLivingEntityState("ladder_down", Priority.HIGHEST, entity -> entity.onClimbable() && getVerticalVelocity(entity) < 0.0f);
-        registerLivingEntityState("elytra_fly", Priority.HIGH, CtrlBinding::isFallFlying);
         registerState("fly", Priority.HIGH, CtrlBinding::isFlying);
+        registerLivingEntityState("elytra_fly", Priority.HIGH, entity -> entity.getPose() == Pose.FALL_FLYING && entity.isFallFlying());
         registerLivingEntityState("swim_stand", Priority.NORMAL, entity -> entity.isInWater() && !entity.onGround());
         registerLivingEntityState("attacked", Priority.NORMAL, entity -> entity.hurtTime > 0);
         registerLivingEntityState("jump", Priority.NORMAL, entity -> !entity.onGround() && !entity.isInWater());
-        registerState("sneak", Priority.NORMAL, context -> context.entity().onGround() && context.entity().getPose() == Pose.CROUCHING && isWalking(context));
+        registerLivingEntityState("sneak", Priority.NORMAL, entity -> entity.onGround() && entity.getPose() == Pose.CROUCHING && isWalking(entity));
         registerLivingEntityState("sneaking", Priority.NORMAL, entity -> entity.onGround() && entity.getPose() == Pose.CROUCHING);
-        registerState("run", Priority.LOWEST, context -> context.entity().onGround() && context.entity().isSprinting() && isWalking(context));
-        registerState("walk", Priority.LOWEST, context -> context.entity().onGround() && isWalking(context));
+        registerLivingEntityState("run", Priority.LOWEST, entity -> entity.onGround() && entity.isSprinting());
+        registerLivingEntityState("walk", Priority.LOWEST, entity -> entity.onGround() && isWalking(entity));
         registerLivingEntityState("idle", Priority.LOWEST, entity -> true);
 
         var("playing_extra_animation", CtrlBinding::isPlayingExtraAnimation);
@@ -116,58 +116,52 @@ public class CtrlBinding extends ContextBinding {
     private static boolean evaluateState(String name, IContext<LivingEntity> context) {
         LivingEntity livingEntity = context.entity();
         EntityFrameStateTracker<?> positionTracker = context.geoInstance().getPositionTracker();
-        int tickCount = context.animationEvent().getTickCount();
-        if (positionTracker.getCachedModelId(tickCount) != null) {
-            return name.equals(positionTracker.getCachedModelId(tickCount));
+        if (positionTracker.getCachedModelId() != null) {
+            return name.equals(positionTracker.getCachedModelId());
         }
         if (context.geoInstance() instanceof IPreviewAnimatable) {
-            positionTracker.setCachedModelId(StringPool.EMPTY, tickCount);
+            positionTracker.setCachedModelId(StringPool.EMPTY);
             return false;
         }
         if ((livingEntity instanceof Player) && ParcoolCompat.isPlayerParcooling((Player) livingEntity)) {
-            positionTracker.setCachedModelId(StringPool.EMPTY, tickCount);
+            positionTracker.setCachedModelId(StringPool.EMPTY);
             return false;
         }
         Entity vehicle = livingEntity.getVehicle();
         if (vehicle != null && vehicle.isAlive()) {
-            positionTracker.setCachedModelId(StringPool.EMPTY, tickCount);
+            positionTracker.setCachedModelId(StringPool.EMPTY);
             return false;
         }
         for (int i = 0; i <= 4; i++) {
             for (AnimationStatePredicate animationStatePredicate : data[i]) {
                 if (animationStatePredicate.predicate().test(context)) {
-                    positionTracker.setCachedModelId(animationStatePredicate.name(), tickCount);
+                    positionTracker.setCachedModelId(animationStatePredicate.name());
                     return animationStatePredicate.name().equals(name);
                 }
             }
         }
-        positionTracker.setCachedModelId(StringPool.EMPTY, tickCount);
+        positionTracker.setCachedModelId(StringPool.EMPTY);
         return false;
     }
 
-    private static boolean isWalking(IContext<LivingEntity> context) {
-        return PlayerStatePredicates.isMoving(context.entity(), context.animationEvent());
+    private static boolean isWalking(LivingEntity livingEntity) {
+        return Math.abs(livingEntity.walkAnimation.speed(Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false))) > 0.05f;
     }
 
     private static float getVerticalVelocity(LivingEntity livingEntity) {
         return 20.0f * ((float) (livingEntity.position().y - livingEntity.yo));
     }
 
-    private static boolean isFallFlying(LivingEntity livingEntity) {
-        return livingEntity.isFallFlying() || livingEntity.getPose() == Pose.FALL_FLYING || livingEntity.getFallFlyingTicks() > 0;
-    }
-
     private static boolean isFlying(IContext<LivingEntity> context) {
         AnimatableEntity<?> animatableEntity = context.geoInstance();
         if (animatableEntity instanceof PlayerCapability cap) {
             if (!cap.isLocalPlayerModel()) {
-                return cap.getPositionTracker().isFlying() && !cap.getPositionTracker().isFallFlying();
+                return cap.getPositionTracker().isFlying();
             }
         }
         Entity entity = context.entity();
         if (entity instanceof Player) {
-            Player player = (Player) entity;
-            return player.getAbilities().flying && !isFallFlying(player);
+            return ((Player) entity).getAbilities().flying;
         }
         return false;
     }

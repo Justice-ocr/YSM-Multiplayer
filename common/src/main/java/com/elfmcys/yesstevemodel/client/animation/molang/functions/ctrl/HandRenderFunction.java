@@ -7,7 +7,7 @@ import com.elfmcys.yesstevemodel.client.animation.condition.InnerClassify;
 import com.elfmcys.yesstevemodel.molang.runtime.ExecutionContext;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -56,7 +56,7 @@ public class HandRenderFunction extends LivingEntityFunction {
 
     @Override
     public Object eval(ExecutionContext<IContext<LivingEntity>> context, ArgumentCollection arguments) {
-        EquipmentSlot slotType = MolangUtils.parseSlotType(context.entity(), arguments.getAsString(context, 0));
+        EquipmentSlot slotType = MolangUtils.parseSlotType(context, arguments, 0);
         if (slotType == null || slotType.isArmor()) {
             return 0;
         }
@@ -74,14 +74,14 @@ public class HandRenderFunction extends LivingEntityFunction {
         }
         String strSubstring = id.substring(1);
         if (id.startsWith(PREFIX_ITEM_ID)) {
-            ResourceLocation key = BuiltInRegistries.ITEM.getKey(itemBySlot.getItem());
+            Identifier key = BuiltInRegistries.ITEM.getKey(itemBySlot.getItem());
             if (key == null) {
                 return 0;
             }
             return strSubstring.equals(key.toString()) ? 1 : 0;
         }
         if (id.startsWith(PREFIX_ITEM_TAG)) {
-            TagKey<Item> tag = TagKey.create(Registries.ITEM, ResourceLocation.parse(strSubstring));
+            TagKey<Item> tag = TagKey.create(Registries.ITEM, Identifier.parse(strSubstring));
             return itemBySlot.is(tag) ? 1 : 0;
         }
         if (id.startsWith(TYPE_PREFIX)) {

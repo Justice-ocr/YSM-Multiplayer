@@ -12,14 +12,14 @@ import com.elfmcys.yesstevemodel.model.format.ServerModelInfo;
 import com.elfmcys.yesstevemodel.client.upload.IResourceLocatable;
 import com.elfmcys.yesstevemodel.mixin.client.ScreenAccessor;
 import com.google.common.collect.ImmutableMap;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.Nullable;
@@ -27,12 +27,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public class ModelInfoScreen extends Screen {
-    private static final int PANEL_BG = 0xCC14171A;
-    private static final int PANEL_SOFT = 0xAA20252A;
-    private static final int ACCENT = 0xFF5CC8A7;
-    private static final int TEXT = 0xFFF3F0E0;
 
-    private static final ResourceLocation DEFAULT_AVATAR = ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "texture/default_avatar.png");
+    private static final Identifier DEFAULT_AVATAR = Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "texture/default_avatar.png");
 
     private static final Map<String, Component> URL_LABELS = ImmutableMap.of("home", Component.translatable("gui.yes_steve_model.url.home"), "donate", Component.translatable("gui.yes_steve_model.url.donate"));
 
@@ -68,7 +64,7 @@ public class ModelInfoScreen extends Screen {
         for (int i = 0; i < authorInfo.size(); i++) {
             OuterFileTexture avatar = avatars.get(authorInfo.get(i).getName());
             if (avatar != null) {
-                textureManager.register(ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "avatars/" + i), avatar);
+                textureManager.register(Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "avatars/" + i), avatar);
                 avatar.load();
                 this.textureList.add(UploadManager.getOrCreateLocatable(avatar, true));
             } else {
@@ -140,13 +136,13 @@ public class ModelInfoScreen extends Screen {
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        renderModernFrame(guiGraphics);
+        guiGraphics.fillGradient(this.guiLeft + 25, this.guiTop + 150, this.guiLeft + 305, this.guiTop + 220, -1889838245, -1889838245);
         Metadata metadata2 = this.modelData.getExtraInfo();
         if (metadata2 != null) {
             int lineOffset = 0;
             Iterator it = this.font.split(Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "metadata.tips", metadata2.getTips())), 270).iterator();
             while (it.hasNext()) {
-                guiGraphics.drawString(this.font, (FormattedCharSequence) it.next(), this.guiLeft + 30, this.guiTop + 154 + lineOffset, TEXT);
+                guiGraphics.drawString(this.font, (FormattedCharSequence) it.next(), this.guiLeft + 30, this.guiTop + 154 + lineOffset, -1);
                 Objects.requireNonNull(this.font);
                 lineOffset += 9;
                 Objects.requireNonNull(this.font);
@@ -161,14 +157,6 @@ public class ModelInfoScreen extends Screen {
         }).forEach(renderable2 -> {
             ((AuthorButton) renderable2).refreshContactComponents(guiGraphics, this, mouseX, mouseY);
         });
-    }
-
-    private void renderModernFrame(GuiGraphics guiGraphics) {
-        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 235, PANEL_BG);
-        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 2, ACCENT);
-        guiGraphics.fill(this.guiLeft + 20, this.guiTop + 10, this.guiLeft + 400, this.guiTop + 140, PANEL_SOFT);
-        guiGraphics.fill(this.guiLeft + 25, this.guiTop + 150, this.guiLeft + 305, this.guiTop + 220, PANEL_SOFT);
-        guiGraphics.drawString(this.font, "Model Info", this.guiLeft + 28, this.guiTop + 4, TEXT, false);
     }
 
     @Override

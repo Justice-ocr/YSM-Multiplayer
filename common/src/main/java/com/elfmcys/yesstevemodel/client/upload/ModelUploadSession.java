@@ -39,9 +39,6 @@ public final class ModelUploadSession {
         if (instance != null && !instance.isTerminal()) {
             return "Upload already in progress";
         }
-        if (!NetworkHandler.isClientConnected()) {
-            return "Not connected to a YSM server";
-        }
         if (data.length == 0) {
             return "Empty file";
         }
@@ -115,7 +112,7 @@ public final class ModelUploadSession {
         s.chunkSize = Math.max(1, chunkSize);
         s.chunksPerTick = Math.max(1, chunksPerTick);
         s.state = State.UPLOADING;
-        s.message = "Uploading...";
+        s.message = "Uploading…";
         notifyListeners();
     }
 
@@ -198,7 +195,7 @@ public final class ModelUploadSession {
         }
         if (nextOffset >= data.length) {
             state = State.FINISHING;
-            message = "Verifying...";
+            message = "Verifying…";
             NetworkHandler.sendToServer(new C2SModelUploadFinishPacket(uploadId));
         }
         notifyListeners();

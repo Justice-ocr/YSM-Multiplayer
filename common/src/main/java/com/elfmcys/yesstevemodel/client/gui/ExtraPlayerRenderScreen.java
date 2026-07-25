@@ -7,15 +7,14 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.util.FormattedCharSequence;
 
 
 public class ExtraPlayerRenderScreen extends Screen {
-    private static final int PANEL_BG = 0x9914171A;
-    private static final int ACCENT = 0xFF5CC8A7;
-    private static final int TEXT = 0xFFF3F0E0;
 
     private static final char RESET_KEY = 'r';
 
@@ -87,11 +86,9 @@ public class ExtraPlayerRenderScreen extends Screen {
         guiGraphics.fillGradient(boxLeft, boxTop, boxRight, boxBottom, 1342177279, 1342177279);
         guiGraphics.fillGradient(boxLeft - this.offsetX, boxTop - this.offsetX, boxLeft + this.offsetX, boxTop + this.offsetX, -16711777, -16711777);
         guiGraphics.fillGradient(boxRight - this.offsetX, boxBottom - this.offsetX, boxRight + this.offsetX, boxBottom + this.offsetX, -16777057, -16777057);
-        guiGraphics.fill(this.width - 525, 8, this.width - 8, 78, PANEL_BG);
-        guiGraphics.fill(this.width - 525, 8, this.width - 8, 10, ACCENT);
         int tipY = 15;
         for (FormattedCharSequence formattedCharSequence : this.font.split(Component.translatable("gui.yes_steve_model.extra_player_render.tips"), 500)) {
-            guiGraphics.drawString(this.font, formattedCharSequence, (this.width - 15) - this.font.width(formattedCharSequence), tipY, TEXT);
+            guiGraphics.drawString(this.font, formattedCharSequence, (this.width - 15) - this.font.width(formattedCharSequence), tipY, -1);
             tipY += 10;
         }
         if (Minecraft.getInstance().player != null && !ExtraPlayerRenderConfig.DISABLE_PLAYER_RENDER.get().booleanValue()) {
@@ -105,7 +102,10 @@ public class ExtraPlayerRenderScreen extends Screen {
 
     }
 
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         boolean inLeftHandleX = ((double) (this.mouseStartX - this.offsetX)) < mouseX && mouseX < ((double) (this.mouseStartX + this.offsetX));
         boolean inLeftHandleY = ((double) (this.mouseStartY - this.offsetX)) < mouseY && mouseY < ((double) (this.mouseStartY + this.offsetX));
         if (button == 0 && inLeftHandleX && inLeftHandleY) {
@@ -118,16 +118,18 @@ public class ExtraPlayerRenderScreen extends Screen {
         if (button == 0 && inRightHandleX && inRightHandleY) {
             this.isRightDragging = true;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(event, doubleClick);
     }
 
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(MouseButtonEvent event) {
         this.isDragging = false;
         this.isRightDragging = false;
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(event);
     }
 
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        double mouseX = event.x();
+        double mouseY = event.y();
         if (this.isRightDragging) {
             this.rotationX = (float) Math.min(mouseX - this.mouseStartX, (mouseY - this.mouseStartY) / 2.0d);
             return true;
@@ -137,18 +139,19 @@ public class ExtraPlayerRenderScreen extends Screen {
             this.mouseStartY = (int) mouseY;
             return true;
         }
-        if (button == this.offsetY) {
+        if (event.button() == this.offsetY) {
             this.rotationY += (float) (dragX * 2.0d);
             return true;
         }
         return false;
     }
 
-    public boolean charTyped(char codePoint, int modifiers) {
-        if (Character.toLowerCase(codePoint) == RESET_KEY && hasAltDown()) {
+    public boolean charTyped(CharacterEvent event) {
+        int codePoint = event.codepoint();
+        if (Character.toLowerCase(codePoint) == RESET_KEY && Minecraft.getInstance().hasAltDown()) {
             resetTransform();
         }
-        return super.charTyped(codePoint, modifiers);
+        return super.charTyped(event);
     }
 
     private void resetTransform() {

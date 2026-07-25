@@ -4,7 +4,6 @@ import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.client.animation.molang.struct.RoamingStruct;
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
 import com.elfmcys.yesstevemodel.client.entity.GeoEntity;
-import com.elfmcys.yesstevemodel.command.subcommands.client.CacheCommand;
 import com.elfmcys.yesstevemodel.geckolib3.core.controller.IAnimationController;
 import com.elfmcys.yesstevemodel.client.renderer.AnimationDebugOverlay;
 import com.elfmcys.yesstevemodel.command.subcommands.client.WatchCommand;
@@ -27,7 +26,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.synchronization.SuggestionProviders;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import rip.ysm.api.PlatformAPI;
 
 import java.util.HashSet;
@@ -38,13 +37,13 @@ public class RootClientCommand {
 
     private static final String ROOT_NAME = "ysmclient";
 
-    public static final SuggestionProvider<CommandSourceStack> VARS_SUGGESTION_PROVIDER = SuggestionProviders.register(ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "vars"), (context, builder) -> {
+    public static final SuggestionProvider<CommandSourceStack> VARS_SUGGESTION_PROVIDER = SuggestionProviders.register(Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "vars"), (context, builder) -> {
         if (context.getSource() instanceof SharedSuggestionProvider && !PlatformAPI.isServer()) {
             return getActiveGeoModel().map(geo -> {
                 HashSet<String> set = Sets.newHashSet();
                 geo.getEvaluationContext().forEachPropertyName(str -> set.add(String.format("v.%s", str)));
                 if (geo instanceof RoamingPropertyHolder) {
-                    Struct struct = ((RoamingPropertyHolder) geo).getPropertyContainer();
+                    Struct struct = ((RoamingPropertyHolder) geo).getServerVarContainer();
                     if (struct instanceof RoamingStruct roamingStruct) {
                         roamingStruct.forEachVar(str2 -> {
                             if (roamingStruct.getProperty(StringPool.getName(str2)) != null) {
@@ -69,7 +68,7 @@ public class RootClientCommand {
         return Suggestions.empty();
     });
 
-    public static final SuggestionProvider<CommandSourceStack> CONTROLLERS_SUGGESTION_PROVIDER = SuggestionProviders.register(ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "controllers"), (commandContext, suggestionsBuilder) -> {
+    public static final SuggestionProvider<CommandSourceStack> CONTROLLERS_SUGGESTION_PROVIDER = SuggestionProviders.register(Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "controllers"), (commandContext, suggestionsBuilder) -> {
         if (commandContext.getSource() instanceof SharedSuggestionProvider && !PlatformAPI.isServer()) {
             return getActiveGeoModel().map(geo -> SharedSuggestionProvider.suggest(geo.getAnimationData().getAnimationControllers().stream().map(IAnimationController::getName).collect(Collectors.toSet()), suggestionsBuilder)).orElseGet(Suggestions::empty);
         }

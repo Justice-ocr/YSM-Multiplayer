@@ -1,8 +1,6 @@
 package com.elfmcys.yesstevemodel.network.message;
 
-import com.elfmcys.yesstevemodel.network.ServerModelUploadManager;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.server.level.ServerPlayer;
 import rip.ysm.api.network.PacketContext;
 
 public record C2SModelUploadFinishPacket(long uploadId) {
@@ -16,13 +14,5 @@ public record C2SModelUploadFinishPacket(long uploadId) {
     }
 
     public static void handle(C2SModelUploadFinishPacket message, PacketContext ctx) {
-        if (ctx.isServerSide()) {
-            ctx.enqueueWork(() -> {
-                ServerPlayer sender = ctx.getSender();
-                if (sender != null) {
-                    ServerModelUploadManager.handleFinish(sender, message);
-                }
-            });
-        }
     }
 }

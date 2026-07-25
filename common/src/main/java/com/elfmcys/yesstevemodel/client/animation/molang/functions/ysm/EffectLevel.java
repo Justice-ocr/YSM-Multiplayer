@@ -7,13 +7,13 @@ import com.elfmcys.yesstevemodel.molang.runtime.ExecutionContext;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.projectile.Arrow;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.alchemy.PotionContents;
 
 public class EffectLevel extends ContextFunction<Entity> {
@@ -27,7 +27,7 @@ public class EffectLevel extends ContextFunction<Entity> {
         int effects = 0;
 
         for (int i = 0; i < arguments.size(); i++) {
-            ResourceLocation effectId = arguments.getResourceLocation(context, i);
+            Identifier effectId = arguments.getResourceLocation(context, i);
             if (effectId != null) {
                 Holder<MobEffect> mobEffectHolder = BuiltInRegistries.MOB_EFFECT
                         .get(ResourceKey.create(net.minecraft.core.registries.Registries.MOB_EFFECT, effectId))

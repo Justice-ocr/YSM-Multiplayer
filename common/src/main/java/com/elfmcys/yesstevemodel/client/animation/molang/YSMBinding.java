@@ -1,7 +1,6 @@
 package com.elfmcys.yesstevemodel.client.animation.molang;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
-import com.elfmcys.yesstevemodel.client.animation.PlayerStatePredicates;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.alchemy.PotionContents;
 import rip.ysm.compat.touhoulittlemaid.TouhouLittleMaidCompat;
@@ -16,9 +15,9 @@ import com.elfmcys.yesstevemodel.geckolib3.core.molang.binding.ContextBinding;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.context.IContext;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import com.elfmcys.yesstevemodel.geckolib3.util.MathInterpolation;
-import com.elfmcys.yesstevemodel.geckolib3.util.MovementQuery;
 import com.elfmcys.yesstevemodel.mixin.client.FishingHookAccessor;
 import com.elfmcys.yesstevemodel.mixin.client.ThrowableItemProjectileAccessor;
+import com.elfmcys.yesstevemodel.geckolib3.core.EntityFrameStateTracker;
 import com.elfmcys.yesstevemodel.util.CameraUtil;
 import com.elfmcys.yesstevemodel.util.data.LazySupplier;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -30,18 +29,18 @@ import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentUtils;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.Parrot;
+import net.minecraft.world.entity.animal.parrot.Parrot;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.Arrow;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.entity.projectile.FishingHook;
-import net.minecraft.world.entity.projectile.SpectralArrow;
-import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
+import net.minecraft.world.entity.projectile.arrow.SpectralArrow;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrowableItemProjectile;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -51,6 +50,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import dev.architectury.platform.Platform;
 import rip.ysm.api.attribute.ForgeAttributes;
 
@@ -85,7 +85,7 @@ public class YSMBinding extends ContextBinding {
         var("head_pitch", ctx -> ctx.data().headPitch);
 
         var("weather", ctx -> getWeather(ctx.level()));
-        var("dimension_name", ctx -> ctx.level().dimension().location().toString());
+        var("dimension_name", ctx -> ctx.level().dimension().identifier().toString());
         var("fps", ctx -> Minecraft.getInstance().getFps());
         var("time_delta", ctx -> ctx.geoInstance().getPositionTracker().getTimeDelta() / 20.0f);
         entityVar("ground_speed2", YSMBinding::getGroundSpeed2);
@@ -106,7 +106,7 @@ public class YSMBinding extends ContextBinding {
         entityVar("eye_in_water", ctx -> ctx.entity().isUnderWater());
         entityVar("frozen_ticks", ctx -> ctx.entity().getTicksFrozen());
         entityVar("air_supply", ctx -> ctx.entity().getAirSupply());
-        entityVar("delta_movement_length", YSMBinding::getDeltaMovementLength);
+        entityVar("delta_movement_length", ctx -> ctx.entity().getDeltaMovement().length());
         livingEntityVar("has_helmet", ctx -> hasEquipment(ctx.entity(), EquipmentSlot.HEAD));
         livingEntityVar("has_chest_plate", ctx -> hasEquipment(ctx.entity(), EquipmentSlot.CHEST));
         livingEntityVar("has_leggings", ctx -> hasEquipment(ctx.entity(), EquipmentSlot.LEGS));
@@ -163,9 +163,9 @@ public class YSMBinding extends ContextBinding {
         playerEntityVar("nametag_distance", ctx -> ForgeAttributes.getValue(ctx.entity(), ForgeAttributes.nametagDistance(), 64.0D));
         playerEntityVar("in_shield_block_cooldown", YSMBinding::isInShieldBlockCooldown);
 
-        clientPlayerEntityVar("elytra_rot_x", ctx -> Math.toDegrees(ctx.entity().elytraRotX));
-        clientPlayerEntityVar("elytra_rot_y", ctx -> Math.toDegrees(ctx.entity().elytraRotY));
-        clientPlayerEntityVar("elytra_rot_z", ctx -> Math.toDegrees(ctx.entity().elytraRotZ));
+        clientPlayerEntityVar("elytra_rot_x", ctx -> Math.toDegrees(ctx.entity().elytraAnimationState.getRotX(ctx.animationEvent().getFrameTime())));
+        clientPlayerEntityVar("elytra_rot_y", ctx -> Math.toDegrees(ctx.entity().elytraAnimationState.getRotY(ctx.animationEvent().getFrameTime())));
+        clientPlayerEntityVar("elytra_rot_z", ctx -> Math.toDegrees(ctx.entity().elytraAnimationState.getRotZ(ctx.animationEvent().getFrameTime())));
 
         localPlayerEntityVar("hit_target_id", YSMBinding::getHitTargetId);
         localPlayerEntityVar("hit_target_type", YSMBinding::getHitTargetType);
@@ -204,14 +204,14 @@ public class YSMBinding extends ContextBinding {
             if (blockHitResult.getType() == HitResult.Type.MISS || (clientLevel = Minecraft.getInstance().level) == null) {
                 return StringPool.EMPTY;
             }
-            ResourceLocation key = BuiltInRegistries.BLOCK.getKey(clientLevel.getBlockState(blockHitResult.getBlockPos()).getBlock());
+            Identifier key = BuiltInRegistries.BLOCK.getKey(clientLevel.getBlockState(blockHitResult.getBlockPos()).getBlock());
             if (key != null) {
                 return key.toString();
             }
             return StringPool.EMPTY;
         }
         if (hitResult instanceof EntityHitResult) {
-            ResourceLocation key2 = BuiltInRegistries.ENTITY_TYPE.getKey(((EntityHitResult) hitResult).getEntity().getType());
+            Identifier key2 = BuiltInRegistries.ENTITY_TYPE.getKey(((EntityHitResult) hitResult).getEntity().getType());
             if (key2 != null) {
                 return key2.toString();
             }
@@ -235,7 +235,7 @@ public class YSMBinding extends ContextBinding {
     }
 
     private static String getHookedEntityType(IContext<FishingHook> context) {
-        ResourceLocation key;
+        Identifier key;
         Entity entity = ((FishingHookAccessor) context.entity()).getHookedIn();
         if (entity != null && (key = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType())) != null) {
             return key.toString();
@@ -246,7 +246,7 @@ public class YSMBinding extends ContextBinding {
     private static String getThrowableItemId(IContext<ThrowableItemProjectile> context) {
         ThrowableItemProjectile throwableItemProjectile = context.entity();
         if (throwableItemProjectile instanceof ThrowableItemProjectileAccessor) {
-            ResourceLocation key = BuiltInRegistries.ITEM.getKey(((ThrowableItemProjectileAccessor) throwableItemProjectile).invokeGetDefaultItem());
+            Identifier key = BuiltInRegistries.ITEM.getKey(((ThrowableItemProjectileAccessor) throwableItemProjectile).invokeGetDefaultItem());
             if (key != null) {
                 return key.toString();
             }
@@ -256,23 +256,12 @@ public class YSMBinding extends ContextBinding {
     }
 
     private static float getGroundSpeed2(IContext<Entity> context) {
-        if (context.entity() instanceof LivingEntity livingEntity) {
-            return PlayerStatePredicates.getGroundSpeed(livingEntity, context.animationEvent());
-        }
-        return MovementQuery.getMeasuredGroundSpeed(context.entity(), context.geoInstance().getPositionTracker());
-    }
-
-    private static double getDeltaMovementLength(IContext<Entity> context) {
-        if (context.entity() instanceof LivingEntity livingEntity && PlayerStatePredicates.isStationaryLocalPlayer(livingEntity, context.animationEvent())) {
-            return 0.0d;
-        }
-        return context.entity().getDeltaMovement().length();
+        EntityFrameStateTracker<?> c0269x82e473c1Mo1215x3cfc56ba = context.geoInstance().getPositionTracker();
+        Vec3 vec3M1419xc2097f01 = c0269x82e473c1Mo1215x3cfc56ba.getPositionDelta();
+        return (20.0f * Mth.sqrt((float) ((vec3M1419xc2097f01.x * vec3M1419xc2097f01.x) + (vec3M1419xc2097f01.z * vec3M1419xc2097f01.z)))) / c0269x82e473c1Mo1215x3cfc56ba.getTimeDelta();
     }
 
     private static float getXxa(IContext<LivingEntity> context) {
-        if (PlayerStatePredicates.isStationaryLocalPlayer(context.entity(), context.animationEvent())) {
-            return 0.0f;
-        }
         AnimatableEntity<?> abstractC0235x5da32a01Mo322x83eb685f = context.geoInstance();
         if (abstractC0235x5da32a01Mo322x83eb685f instanceof PlayerCapability playerCapability) {
             if (!playerCapability.isLocalPlayerModel()) {
@@ -293,9 +282,6 @@ public class YSMBinding extends ContextBinding {
     }
 
     private static float getZza(IContext<LivingEntity> context) {
-        if (PlayerStatePredicates.isStationaryLocalPlayer(context.entity(), context.animationEvent())) {
-            return 0.0f;
-        }
         AnimatableEntity<?> abstractC0235x5da32a01Mo322x83eb685f = context.geoInstance();
         if (abstractC0235x5da32a01Mo322x83eb685f instanceof PlayerCapability playerCapability) {
             if (!playerCapability.isLocalPlayerModel()) {
@@ -331,7 +317,7 @@ public class YSMBinding extends ContextBinding {
         if (livingEntityMo327xaffeef43 instanceof Player) {
             return "player";
         }
-        ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(livingEntityMo327xaffeef43.getType());
+        Identifier key = BuiltInRegistries.ENTITY_TYPE.getKey(livingEntityMo327xaffeef43.getType());
         if (key == null) {
             return StringPool.EMPTY;
         }
@@ -421,7 +407,7 @@ public class YSMBinding extends ContextBinding {
         }
         Holder<Biome> biome = context.entity().level().getBiome(context.entity().blockPosition());
         biome.unwrapKey().ifPresent(resourceKey -> {
-            context.logWarningComponent(Component.literal("Name ").append(ComponentUtils.copyOnClickText(resourceKey.location().toString())));
+            context.logWarningComponent(Component.literal("Name ").append(ComponentUtils.copyOnClickText(resourceKey.identifier().toString())));
         });
         biome.tags().forEach(tagKey -> {
             context.logWarningComponent(Component.literal("Tag ").append(ComponentUtils.copyOnClickText(tagKey.location().toString())));
@@ -435,15 +421,15 @@ public class YSMBinding extends ContextBinding {
     }
 
     public static String getShoulderParrotVariant(Player player, boolean leftShoulder) {
-        CompoundTag shoulderEntityLeft = leftShoulder ? player.getShoulderEntityLeft() : player.getShoulderEntityRight();
-        return EntityType.byString(shoulderEntityLeft.getStringOr("id", "")).filter(entityType -> {
-            return entityType == EntityType.PARROT;
-        }).map(entityType2 -> {
-            return Parrot.Variant.byId(shoulderEntityLeft.getIntOr("Variant", 0)).name().toLowerCase(Locale.ENGLISH);
-        }).orElse("empty");
+        if (!(player instanceof net.minecraft.client.player.AbstractClientPlayer acp)) {
+            return "empty";
+        }
+        Parrot.Variant variant = acp.getParrotVariantOnShoulder(leftShoulder);
+        return variant == null ? "empty" : variant.name().toLowerCase(Locale.ENGLISH);
     }
 
     private static boolean hasShoulderParrot(Player player, boolean leftShoulder) {
-        return !(leftShoulder ? player.getShoulderEntityLeft() : player.getShoulderEntityRight()).isEmpty();
+        return player instanceof net.minecraft.client.player.AbstractClientPlayer acp
+                && acp.getParrotVariantOnShoulder(leftShoulder) != null;
     }
 }

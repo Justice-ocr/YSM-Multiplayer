@@ -1,7 +1,7 @@
 {
   "gui.yes_steve_model.config.disable_projectile_model": "투사체 모델 렌더링 비활성화",
   "gui.yes_steve_model.config.disable_vehicle_model": "탈것 모델 렌더링 비활성화",
-  "key.category.yes_steve_model": "",
+  "key.category.yes_steve_model.main": "",
   "gui.yes_steve_model.close": "닫기",
   "gui.yes_steve_model.pre_page": "이전 페이지",
   "gui.yes_steve_model.next_page": "다음 페이지",

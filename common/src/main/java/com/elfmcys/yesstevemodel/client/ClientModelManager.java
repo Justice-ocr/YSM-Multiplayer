@@ -1,56 +1,56 @@
 package com.elfmcys.yesstevemodel.client;
 
+import com.elfmcys.yesstevemodel.NativeLibLoader;
 import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
-import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
-import com.elfmcys.yesstevemodel.client.upload.UploadManager;
-import com.elfmcys.yesstevemodel.client.model.ModelAssemblyFactory;
 import com.elfmcys.yesstevemodel.client.gui.IGuiWidget;
+import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
+import com.elfmcys.yesstevemodel.client.model.ModelAssemblyFactory;
+import com.elfmcys.yesstevemodel.client.model.ProjectileModelBundle;
+import com.elfmcys.yesstevemodel.client.model.VehicleModelBundle;
 import com.elfmcys.yesstevemodel.client.texture.OuterFileTexture;
 import com.elfmcys.yesstevemodel.client.upload.IResourceLocatable;
-import com.elfmcys.yesstevemodel.config.GeneralConfig;
+import com.elfmcys.yesstevemodel.client.upload.UploadManager;
 import com.elfmcys.yesstevemodel.model.ServerModelManager;
+import com.elfmcys.yesstevemodel.model.format.ServerModelData;
 import com.elfmcys.yesstevemodel.network.NetworkHandler;
 import com.elfmcys.yesstevemodel.network.message.C2SModelSyncPayload;
-import com.elfmcys.yesstevemodel.resource.*;
-import com.elfmcys.yesstevemodel.resource.pojo.RawYsmModel;
+import com.elfmcys.yesstevemodel.resource.YSMBinaryDeserializer;
+import com.elfmcys.yesstevemodel.resource.YSMClientMapper;
+import com.elfmcys.yesstevemodel.resource.YSMFolderDeserializer;
 import com.elfmcys.yesstevemodel.resource.models.ModelPackData;
+import com.elfmcys.yesstevemodel.resource.pojo.RawYsmModel;
+import com.elfmcys.yesstevemodel.util.FileTypeUtil;
+import com.elfmcys.yesstevemodel.util.YSMThreadPool;
 import com.elfmcys.yesstevemodel.util.data.OrderedStringMap;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import rip.ysm.security.YSMClientCache;
-import rip.ysm.security.YsmCrypt;
-import com.elfmcys.yesstevemodel.util.*;
 import com.mojang.blaze3d.systems.RenderSystem;
+import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceMaps;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.resources.Identifier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.message.StringFormattedMessage;
 import org.jetbrains.annotations.Nullable;
-
 import rip.ysm.security.YSMByteBuf;
-import io.netty.buffer.Unpooled;
+import rip.ysm.security.YSMClientCache;
+import rip.ysm.security.YsmCrypt;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.net.URI;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -62,7 +62,15 @@ public class ClientModelManager {
     private static byte[] serverKey;
     private static byte[] clientKey;
     private static String currentCacheFolderName;
-    private static int pendingModelsCount;
+    private static final AtomicInteger pendingModelsCount = new AtomicInteger(0);
+
+    private static final ThreadPoolExecutor modelPhraseExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
+            r -> {
+                Thread t = new Thread(r, "YSM-Model-Parse-Thread");
+                t.setDaemon(true);
+                return t;
+            }
+    );
 
     private static final Map<UUID, ServerModelContext> serverModels = new ConcurrentHashMap<>();
 
@@ -74,19 +82,13 @@ public class ClientModelManager {
 
     private static volatile Map<String, ModelAssembly> modelAssemblyMap = Object2ReferenceMaps.emptyMap();
     private static volatile Map<String, ModelPackData> modelPackMap = new Object2ReferenceOpenHashMap<>();
+    private static final Set<String> localOnlyModelIds = ConcurrentHashMap.newKeySet();
 
     private static final ConcurrentLinkedQueue<Pair<ModelAssembly, String>> pendingModelQueue = new ConcurrentLinkedQueue<>();
     private static final WeakHashMap<IGuiWidget, Object> guiWidgets = new WeakHashMap<>();
     private static final SyncStatus syncState = new SyncStatus();
-    private static final AtomicInteger offlineModelApplyGeneration = new AtomicInteger();
-    private static final Object offlineModelSelectionsLock = new Object();
-    private static final Map<String, OfflineModelSelection> offlineModelSelections = new ConcurrentHashMap<>();
-    private static volatile UUID lockedLocalPlayerUuid;
-    private static volatile String lockedServerAddress;
-    private static volatile boolean offlineModelSelectionsLoaded;
-
-    private record OfflineModelSelection(String modelId, String textureId) {
-    }
+    private static boolean isOysmServer = false;
+    private static boolean allowUpload = false;
 
     public enum SyncState {
         WAITING, LOADING, IDLE, PREPARING, SYNCING
@@ -116,448 +118,6 @@ public class ClientModelManager {
         }
     }
 
-
-    /**
-     * 服务器没有安装 YSM 时，将本地 custom 目录里的模型加载进 modelAssemblyMap，
-     * 使玩家可以在客户端看到自己的自定义模型。
-     */
-    /**
-     * 扫描并加载 built/ 和 custom/ 目录里的本地模型。
-     * 单人和多人服务器接入时均会调用，加载完成后状态自动切换为 IDLE。
-     */
-    public static void loadLocalModels() {
-        YSMThreadPool.submit(() -> {
-            // 确保 primaryAssembly（default 模型）已就绪
-            // loadDefaultModel() 是同步的，会把 default 模型放入 pendingModelCallback
-            loadDefaultModel();
-            // 立即执行 pendingModelCallback，让 primaryAssembly 设置完毕
-            runPendingModelCallback();
-
-            Path builtDir = ServerModelManager.BUILT;
-            Path customDir = ServerModelManager.CUSTOM;
-
-            // 依次加载 built/ 和 custom/
-            loadModelsFromDir(builtDir);
-            loadModelsFromDir(customDir);
-
-            // 加载完成，通知 GUI 刷新，切换为 IDLE
-            Minecraft.getInstance().execute(() -> {
-                flushPendingModels();
-                applyRememberedOfflineModel();
-                syncState.setState(SyncState.IDLE);
-                forEachGuiWidget(IGuiWidget::onSyncComplete);
-            });
-        });
-    }
-
-    public static void rememberOfflineModel(String modelId, String textureId) {
-        if (StringUtils.isBlank(modelId)) {
-            return;
-        }
-
-        String sessionKey = getCurrentSessionKey();
-        if (sessionKey == null) {
-            YesSteveModel.LOGGER.warn("[YSM Local] Skip saving local model without a stable session key: {}", modelId);
-            return;
-        }
-
-        offlineModelSelections.put(sessionKey, new OfflineModelSelection(modelId, StringUtils.defaultString(textureId)));
-        saveOfflineModelSelections();
-    }
-
-    public static void applyRememberedOfflineModel() {
-        Minecraft minecraft = Minecraft.getInstance();
-        LocalPlayer player = minecraft.player;
-        if (player == null) {
-            return;
-        }
-        applyRememberedOfflineModel(player);
-    }
-
-    public static void applyRememberedOfflineModel(LocalPlayer player) {
-        if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
-            return;
-        }
-
-        OfflineModelSelection selection = getRememberedOfflineSelection();
-        if (selection == null || StringUtils.isBlank(selection.modelId())) {
-            return;
-        }
-
-        flushPendingModels();
-        String modelId = selection.modelId();
-        ModelAssembly modelAssembly = modelAssemblyMap.get(modelId);
-        if (modelAssembly == null) {
-            YesSteveModel.LOGGER.warn("[YSM Local] Remembered model is not loaded: {}", modelId);
-            return;
-        }
-
-        OrderedStringMap<String, ? extends AbstractTexture> textures = modelAssembly.getAnimationBundle().getTextures();
-        if (textures.isEmpty()) {
-            YesSteveModel.LOGGER.warn("[YSM Local] Remembered model has no textures: {}", modelId);
-            return;
-        }
-
-        String textureId = selection.textureId();
-        if (StringUtils.isBlank(textureId) || !textures.containsKey(textureId)) {
-            textureId = modelAssembly.getAnimationBundle().getDefaultTextureName();
-            if (StringUtils.isBlank(textureId) || !textures.containsKey(textureId)) {
-                textureId = textures.getKeyAt(0);
-            }
-        }
-
-        String finalTextureId = textureId;
-        PlayerCapability.get(player).ifPresent(cap -> {
-            boolean modelMatches = Objects.equals(modelId, cap.getModelId());
-            boolean textureMatches = Objects.equals(finalTextureId, cap.currentTextureName);
-            if (cap.isModelSwitching() && modelMatches) {
-                if (cap.isForceDisabled()) {
-                    cap.setForceDisabled(false);
-                }
-                return;
-            }
-            if (modelMatches && textureMatches && !cap.isForceDisabled()) {
-                return;
-            }
-            cap.initModelWithTexture(modelId, finalTextureId);
-            cap.setForceDisabled(false);
-            cap.clearModelSwitch();
-            cap.enableModel();
-        });
-    }
-
-    public static void enforceRememberedOfflineModel(LocalPlayer player) {
-        if (player == null || !isLockedLocalPlayerEntity(player)) {
-            return;
-        }
-        if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
-            return;
-        }
-
-        OfflineModelSelection selection = getRememberedOfflineSelection();
-        if (selection == null || StringUtils.isBlank(selection.modelId())) {
-            return;
-        }
-
-        PlayerCapability.get(player).ifPresent(cap -> {
-            String modelId = selection.modelId();
-            String textureId = selection.textureId();
-            boolean modelMismatch = !Objects.equals(modelId, cap.getModelId());
-            boolean textureMismatch = StringUtils.isNotBlank(textureId)
-                    && !Objects.equals(textureId, cap.currentTextureName);
-            if (!cap.isModelSwitching()
-                    && (modelMismatch || textureMismatch || cap.isForceDisabled() || cap.isDisabledState())) {
-                applyRememberedOfflineModel(player);
-            }
-        });
-    }
-
-    public static void scheduleRememberedOfflineModelApply(LocalPlayer player) {
-        if (player == null || !Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
-            return;
-        }
-        if (getRememberedOfflineSelection() == null) {
-            return;
-        }
-
-        lockLocalPlayerUuid(player);
-        int generation = offlineModelApplyGeneration.incrementAndGet();
-        Minecraft minecraft = Minecraft.getInstance();
-        minecraft.execute(() -> applyRememberedOfflineModelIfCurrent(player, generation));
-        YSMThreadPool.submit(() -> {
-            int[] delays = {250, 500, 1000, 2000, 4000};
-            for (int delay : delays) {
-                try {
-                    Thread.sleep(delay);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                if (offlineModelApplyGeneration.get() != generation) {
-                    return;
-                }
-                minecraft.execute(() -> applyRememberedOfflineModelIfCurrent(player, generation));
-            }
-        });
-    }
-
-    public static void lockLocalPlayerUuid(LocalPlayer player) {
-        if (player == null) {
-            return;
-        }
-        UUID playerUuid = player.getUUID();
-        String serverAddress = getCurrentServerAddressKey();
-        UUID lockedUuid = lockedLocalPlayerUuid;
-        String previousServerAddress = lockedServerAddress;
-        if (!playerUuid.equals(lockedUuid) || !Objects.equals(serverAddress, previousServerAddress)) {
-            lockedLocalPlayerUuid = playerUuid;
-            lockedServerAddress = serverAddress;
-            YesSteveModel.LOGGER.info("[YSM Local] Locked local session: server={}, uuid={}", serverAddress, playerUuid);
-        }
-    }
-
-    public static void scheduleRememberedOfflineModelApplyForLockedUuid() {
-        if (!Boolean.TRUE.equals(GeneralConfig.OFFLINE_MODEL_ENABLED.get())) {
-            return;
-        }
-        if (getRememberedOfflineSelection() == null) {
-            return;
-        }
-
-        int generation = offlineModelApplyGeneration.incrementAndGet();
-        Minecraft minecraft = Minecraft.getInstance();
-        minecraft.execute(() -> applyRememberedOfflineModelIfLockedUuid(generation));
-        YSMThreadPool.submit(() -> {
-            int[] delays = {250, 500, 1000, 2000, 4000, 8000};
-            for (int delay : delays) {
-                try {
-                    Thread.sleep(delay);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                if (offlineModelApplyGeneration.get() != generation) {
-                    return;
-                }
-                minecraft.execute(() -> applyRememberedOfflineModelIfLockedUuid(generation));
-            }
-        });
-    }
-
-    private static void applyRememberedOfflineModelIfCurrent(LocalPlayer player, int generation) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (offlineModelApplyGeneration.get() == generation
-                && minecraft.player == player
-                && isLockedLocalPlayerEntity(player)) {
-            applyRememberedOfflineModel(player);
-        }
-    }
-
-    private static void applyRememberedOfflineModelIfLockedUuid(int generation) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (offlineModelApplyGeneration.get() == generation
-                && player != null
-                && isLockedLocalPlayerEntity(player)) {
-            applyRememberedOfflineModel(player);
-        }
-    }
-
-    public static boolean isLockedLocalPlayerEntity(Entity entity) {
-        UUID lockedUuid = lockedLocalPlayerUuid;
-        if (lockedUuid == null || !lockedUuid.equals(entity.getUUID())) {
-            return false;
-        }
-        String serverAddress = getCurrentServerAddressKey();
-        return serverAddress == null || lockedServerAddress == null || Objects.equals(lockedServerAddress, serverAddress);
-    }
-
-    public static boolean isLocalPlayerEntity(Entity entity) {
-        if (isLockedLocalPlayerEntity(entity)) {
-            return true;
-        }
-        if (!isCurrentServerLocked()) {
-            return false;
-        }
-        if (entity instanceof LocalPlayer) {
-            return true;
-        }
-        LocalPlayer localPlayer = Minecraft.getInstance().player;
-        return localPlayer != null
-                && (localPlayer == entity
-                || localPlayer.getId() == entity.getId()
-                || localPlayer.getUUID().equals(entity.getUUID()));
-    }
-
-    public static boolean isCurrentServerLocked() {
-        String serverAddress = getCurrentServerAddressKey();
-        return serverAddress == null || lockedServerAddress == null || Objects.equals(lockedServerAddress, serverAddress);
-    }
-
-    @Nullable
-    private static String getCurrentServerAddressKey() {
-        Minecraft minecraft = Minecraft.getInstance();
-        ServerData serverData = minecraft.getCurrentServer();
-        if (serverData != null && StringUtils.isNotBlank(serverData.ip)) {
-            return normalizeServerAddress(serverData.ip);
-        }
-
-        ClientPacketListener listener = minecraft.getConnection();
-        if (listener != null) {
-            Connection connection = listener.getConnection();
-            if (connection != null) {
-                return normalizeSocketAddress(connection.getRemoteAddress());
-            }
-        }
-        return null;
-    }
-
-    private static String normalizeSocketAddress(@Nullable SocketAddress address) {
-        if (address instanceof InetSocketAddress inetSocketAddress) {
-            String host = inetSocketAddress.getHostString();
-            int port = inetSocketAddress.getPort();
-            if (StringUtils.isBlank(host)) {
-                return null;
-            }
-            return normalizeServerAddress(port > 0 ? host + ":" + port : host);
-        }
-        return address == null ? null : normalizeServerAddress(address.toString());
-    }
-
-    private static String normalizeServerAddress(String address) {
-        String normalized = StringUtils.trimToEmpty(address).toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-        return StringUtils.isBlank(normalized) ? null : normalized;
-    }
-
-    @Nullable
-    private static OfflineModelSelection getRememberedOfflineSelection() {
-        loadOfflineModelSelections();
-        String sessionKey = getCurrentSessionKey();
-        return sessionKey == null ? null : offlineModelSelections.get(sessionKey);
-    }
-
-    @Nullable
-    private static String getCurrentSessionKey() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.isLocalServer() || minecraft.hasSingleplayerServer()) {
-            String worldName = getSingleplayerWorldName(minecraft);
-            return StringUtils.isBlank(worldName) ? "singleplayer" : "singleplayer:" + worldName;
-        }
-
-        String serverAddress = getCurrentServerAddressKey();
-        if (StringUtils.isNotBlank(serverAddress)) {
-            return "server:" + serverAddress;
-        }
-        return null;
-    }
-
-    @Nullable
-    private static String getSingleplayerWorldName(Minecraft minecraft) {
-        if (minecraft.getSingleplayerServer() == null) {
-            return null;
-        }
-
-        String levelName = minecraft.getSingleplayerServer().getWorldData().getLevelName();
-        return StringUtils.isBlank(levelName) ? null : normalizeServerAddress(levelName);
-    }
-
-    private static Path getOfflineModelSelectionsPath() {
-        return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("yes_steve_model_offline_models.properties");
-    }
-
-    private static void loadOfflineModelSelections() {
-        if (offlineModelSelectionsLoaded) {
-            return;
-        }
-        synchronized (offlineModelSelectionsLock) {
-            if (offlineModelSelectionsLoaded) {
-                return;
-            }
-            Path path = getOfflineModelSelectionsPath();
-            if (Files.isRegularFile(path)) {
-                Properties properties = new Properties();
-                try (InputStream inputStream = Files.newInputStream(path)) {
-                    properties.load(inputStream);
-                    for (String propertyName : properties.stringPropertyNames()) {
-                        if (propertyName.endsWith(".model")) {
-                            String sessionKey = propertyName.substring(0, propertyName.length() - ".model".length());
-                            String modelId = properties.getProperty(propertyName, "");
-                            String textureId = properties.getProperty(sessionKey + ".texture", "");
-                            if (StringUtils.isNotBlank(modelId)) {
-                                offlineModelSelections.put(sessionKey, new OfflineModelSelection(modelId, textureId));
-                            }
-                        }
-                    }
-                } catch (IOException e) {
-                    YesSteveModel.LOGGER.warn("[YSM Local] Failed to load per-server model selections", e);
-                }
-            }
-            offlineModelSelectionsLoaded = true;
-        }
-    }
-
-    private static void saveOfflineModelSelections() {
-        loadOfflineModelSelections();
-        synchronized (offlineModelSelectionsLock) {
-            Properties properties = new Properties();
-            offlineModelSelections.forEach((sessionKey, selection) -> {
-                properties.setProperty(sessionKey + ".model", selection.modelId());
-                properties.setProperty(sessionKey + ".texture", StringUtils.defaultString(selection.textureId()));
-            });
-
-            Path path = getOfflineModelSelectionsPath();
-            try {
-                Files.createDirectories(path.getParent());
-                try (OutputStream outputStream = Files.newOutputStream(path)) {
-                    properties.store(outputStream, "Yes Steve Model per-server local model selections");
-                }
-            } catch (IOException e) {
-                YesSteveModel.LOGGER.warn("[YSM Local] Failed to save per-server model selection", e);
-            }
-        }
-    }
-
-    private static void loadModelsFromDir(Path dir) {
-        if (!Files.isDirectory(dir)) return;
-        YesSteveModel.LOGGER.info("[YSM Local] Scanning: {}", dir);
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path entry : stream) {
-                String name = entry.getFileName().toString();
-                if (name.equals("notice.txt")) continue;
-                boolean isZip = name.endsWith(".zip");
-                boolean isYsm = name.endsWith(".ysm");
-                boolean isDir = Files.isDirectory(entry);
-                if (!isZip && !isYsm && !isDir) continue;
-
-                String modelId = isDir ? name : name.substring(0, name.lastIndexOf('.'));
-                try {
-                    loadSingleModel(entry, modelId, isYsm);
-                    YesSteveModel.LOGGER.info("[YSM Local] Loaded: {}", modelId);
-                } catch (Exception e) {
-                    YesSteveModel.LOGGER.warn("[YSM Local] Failed to load {}: {}", modelId, e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            YesSteveModel.LOGGER.error("[YSM Local] Error scanning {}: {}", dir, e.getMessage());
-        }
-    }
-
-    private static void loadSingleModel(Path entry, String modelId, boolean isYsm) throws Exception {
-        if (isYsm) {
-            // .ysm 是加密文件，与服务端加载逻辑保持一致
-            byte[] raw = Files.readAllBytes(entry);
-            int cryptoVersion = rip.ysm.legacy.YesModelUtils.getYsmCryptoVersion(raw);
-            if (cryptoVersion == -1) {
-                throw new IllegalStateException("Unknown YSM crypto version");
-            }
-            RawYsmModel rawModel;
-            if (cryptoVersion == 1 || cryptoVersion == 2) {
-                // 旧版加密：解密后得到文件映射，用 YSMFolderDeserializer(Map) 加载
-                java.util.Map<String, byte[]> fileMap = rip.ysm.legacy.YesModelUtils.input(raw);
-                try (YSMFolderDeserializer deserializer = new YSMFolderDeserializer(fileMap)) {
-                    rawModel = deserializer.deserialize();
-                }
-            } else {
-                // 新版加密：解密后得到二进制数据，用 YSMBinaryDeserializer 加载
-                byte[] decrypted = rip.ysm.security.YsmCrypt.decryptYsmFile(raw);
-                try (YSMBinaryDeserializer deserializer = new YSMBinaryDeserializer(decrypted)) {
-                    rawModel = deserializer.deserializeKeepOpen();
-                }
-            }
-            ClientModelInfo parsedBundle = YSMClientMapper.buildParsedBundle(rawModel, modelId);
-            onModelDataReceived(parsedBundle, modelId, false, false);
-        } else {
-            // .zip 或文件夹：直接用 YSMFolderDeserializer(Path) 加载
-            try (YSMFolderDeserializer deserializer = new YSMFolderDeserializer(entry)) {
-                RawYsmModel rawModel = deserializer.deserialize();
-                ClientModelInfo parsedBundle = YSMClientMapper.buildParsedBundle(rawModel, modelId);
-                onModelDataReceived(parsedBundle, modelId, false, false);
-            }
-        }
-    }
-
     public static void loadDefaultModel() {
         YesSteveModel.LOGGER.info("[YSM] Loading builtin default model...");
         try {
@@ -581,13 +141,13 @@ public class ClientModelManager {
                 defaultPath = Paths.get(uri);
             }
 
-            try( YSMFolderDeserializer deserializer = new YSMFolderDeserializer(defaultPath)) {
-            RawYsmModel rawModel = deserializer.deserialize();
+            try (YSMFolderDeserializer deserializer = new YSMFolderDeserializer(defaultPath)) {
+                RawYsmModel rawModel = deserializer.deserialize();
 
-            ClientModelInfo  parsedBundle = YSMClientMapper.buildParsedBundle(rawModel, "default");
+                ClientModelInfo parsedBundle = YSMClientMapper.buildParsedBundle(rawModel, "default");
 
 
-            onModelDataReceived(parsedBundle, "default", true, false);
+                onModelDataReceived(parsedBundle, "default", true, false);
                 YesSteveModel.LOGGER.info("[YSM] Successfully pushed Default Model to render queue.");
             } catch (Exception e) {
                 YesSteveModel.LOGGER.error("[YSM] Failed to dispatch Default Model", e);
@@ -595,6 +155,101 @@ public class ClientModelManager {
         } catch (Exception e) {
             YesSteveModel.LOGGER.error("[YSM] Failed to load builtin default model", e);
         }
+    }
+
+    public static void enterClientOnlyMode() {
+        if (!ClientOnlyMode.markCatalogLoaded()) return;
+        Minecraft.getInstance().execute(() -> {
+            syncState.setState(SyncState.LOADING);
+            forEachGuiWidget(IGuiWidget::onSyncBegin);
+        });
+        YSMThreadPool.submit(() -> {
+            boolean started = ServerModelManager.loadModels(result -> {
+                if (result.isSuccess()) {
+                    registerClientOnlyCatalog();
+                    return;
+                }
+                Component error = result.getErrorMessage();
+                YesSteveModel.LOGGER.error("[YSM] Client-only model loading failed: {}", error == null ? "unknown error" : error.getString());
+                Minecraft.getInstance().execute(() -> syncState.setState(SyncState.IDLE));
+            }, null);
+            if (!started) {
+                YesSteveModel.LOGGER.error("[YSM] Failed to start client-only model loading");
+                Minecraft.getInstance().execute(() -> syncState.setState(SyncState.IDLE));
+            }
+        });
+    }
+
+    private static void registerClientOnlyCatalog() {
+        Map<String, ServerModelData> modelInfo = new LinkedHashMap<>(ServerModelManager.getServerModelInfo());
+        int total = modelInfo.size();
+        localOnlyModelIds.addAll(modelInfo.keySet());
+        Minecraft.getInstance().execute(() -> {
+            if (total > 0) {
+                syncState.startSyncing(total);
+            } else {
+                syncState.setState(SyncState.IDLE);
+            }
+            forEachGuiWidget(guiWidget -> guiWidget.onSyncProgress(total, 0));
+            registerLocalModelPacks();
+        });
+        modelPhraseExecutor.submit(() -> {
+            for (Map.Entry<String, ServerModelData> entry : modelInfo.entrySet()) {
+                try {
+                    String sha256 = entry.getValue().getLoadedModelData().getModelHash();
+                    long[] hashes = YsmCrypt.calculateModelHashes(sha256, ServerModelManager.serverKey);
+                    Path cacheFile = ServerModelManager.CACHE_SERVER.resolve(String.format("%016x%016x", hashes[0], hashes[1]));
+                    byte[] modelData = YsmCrypt.read(Files.readAllBytes(cacheFile), ServerModelManager.serverKey);
+                    parseAndLoadModel(modelData, entry.getKey(), entry.getValue().isAuth());
+                } catch (Exception exception) {
+                    YesSteveModel.LOGGER.error("[YSM] Failed to load local model: " + entry.getKey(), exception);
+                }
+            }
+            Minecraft.getInstance().execute(() -> {
+                runPendingModelCallback();
+                flushPendingModels();
+                syncState.setState(SyncState.IDLE);
+                Map<String, ModelAssembly> models = modelAssemblyMap;
+                forEachGuiWidget(guiWidget -> {
+                    guiWidget.onModelsUpdated(models);
+                    guiWidget.onSyncComplete();
+                });
+                applyClientOnlySelection();
+                YesSteveModel.LOGGER.info("[YSM] Client-only catalog registered, {} model(s) available.", models.size());
+            });
+        });
+    }
+
+    private static void registerLocalModelPacks() {
+        Map<String, ServerModelManager.ServerPackData> packs = ServerModelManager.getPacks();
+        if (packs.isEmpty()) return;
+        List<ModelPackData> parsedPacks = new ArrayList<>();
+        for (ServerModelManager.ServerPackData pack : packs.values()) {
+            OuterFileTexture iconTexture = pack.iconData == null ? null : new OuterFileTexture(pack.iconData);
+            parsedPacks.add(new ModelPackData(
+                    pack.folderPath,
+                    StringUtils.defaultString(pack.name),
+                    StringUtils.defaultString(pack.description),
+                    iconTexture,
+                    pack.lang == null ? new HashMap<>() : pack.lang
+            ));
+        }
+        onModelPacksReceived(parsedPacks.toArray(new ModelPackData[0]));
+    }
+
+    public static void applyClientOnlySelection() {
+        if (!ClientOnlyMode.isActive() || !ClientOnlySelection.hasSelection()) return;
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return;
+        String modelId = ClientOnlySelection.getModelId();
+        if (!modelAssemblyMap.containsKey(modelId)) return;
+        PlayerCapability.get(player).ifPresent(cap -> {
+            String textureId = ClientOnlySelection.getTextureId();
+            if (!modelId.equals(cap.getModelId()) || !textureId.equals(cap.getCurrentTextureName())) {
+                cap.initModelWithTexture(modelId, textureId);
+                cap.setForceDisabled(false);
+            }
+        });
     }
 
     private static void processServerData(ByteBuffer data) {
@@ -619,7 +274,7 @@ public class ClientModelManager {
             } else if (syncStep == 2) {
                 decrypted = YsmCrypt.decrypt(packetBytes, lastKey);
                 if (decrypted != null) {
-                    try (YSMByteBuf buf = new YSMByteBuf(Unpooled.wrappedBuffer(decrypted))){
+                    try (YSMByteBuf buf = new YSMByteBuf(Unpooled.wrappedBuffer(decrypted))) {
                         handlePacket03(buf);
                     }
                 }
@@ -660,7 +315,9 @@ public class ClientModelManager {
         }
     }
 
-    private record ModelHash(long hash1, long hash2) {}
+    private record ModelHash(long hash1, long hash2) {
+    }
+
     private static final List<ModelHash> cachedModelHashes = new ArrayList<>();
 
     private static void handlePacket03(YSMByteBuf buf) throws Exception {
@@ -684,6 +341,11 @@ public class ClientModelManager {
         int unkSize = buf.readVarInt();
         onSyncProgress(unkSize);
 
+        Set<String> validServerModelIds = new HashSet<>();
+        List<String> previousModelIds = new ArrayList<>();
+        List<String> updatedModelIds = new ArrayList<>();
+        List<Boolean> isModelReadyList = new ArrayList<>();
+
         for (int i = 0; i < unkSize; i++) {
             long hash1 = buf.readVarLong();
             long hash2 = buf.readVarLong();
@@ -698,15 +360,37 @@ public class ClientModelManager {
 
             ServerModelContext ctx = new ServerModelContext(hash1, hash2, modelId, isAuth, isCustomSkinModel, version);
             serverModels.put(ctx.uuid, ctx);
+            validServerModelIds.add(modelId);
+
+            if (ClientOnlyMode.isForced() && localOnlyModelIds.contains(modelId)) {
+                YesSteveModel.LOGGER.info("[YSM] Keeping local model '{}' instead of the server copy.", modelId);
+                continue;
+            }
 
             File cachedFile = localCacheMap.get(ctx.uuid);
+            boolean isFileValid = YSMClientCache.verifyFileContent(cachedFile, hash1, hash2);
 
-            if (YSMClientCache.verifyFileContent(cachedFile, hash1, hash2)) {
+            boolean alreadyInMemory = modelAssemblyMap != null && modelAssemblyMap.containsKey(modelId);
+
+            if (isFileValid) {
                 YesSteveModel.LOGGER.info("[YSM] Cache HIT & Validated: " + ctx.uuid);
-                // 命中缓存
-                byte[] fileBytes = Files.readAllBytes(cachedFile.toPath());
-                byte[] decompressed = YsmCrypt.read(fileBytes, clientKey);
-                parseAndLoadModel(decompressed, modelId, isAuth);
+                if (alreadyInMemory) {
+                    previousModelIds.add(modelId);
+                    updatedModelIds.add(modelId);
+                    isModelReadyList.add(isAuth);
+                } else {
+                    // 命中缓存
+                    modelPhraseExecutor.submit(() -> {
+                        if (clientKey == null) return;
+                        try {
+                            byte[] fileBytes = Files.readAllBytes(cachedFile.toPath());
+                            byte[] decompressed = YsmCrypt.read(fileBytes, clientKey);
+                            parseAndLoadModel(decompressed, modelId, isAuth);
+                        } catch (Exception e) {
+                            YesSteveModel.LOGGER.error("[YSM] Failed to parse and load cached model: " + modelId, e);
+                        }
+                    });
+                }
             } else {
                 YesSteveModel.LOGGER.info("[YSM] Cache MISS or Invalid: " + ctx.uuid + " -> Requesting...");
                 modelsToRequest.add(mHash);
@@ -727,7 +411,9 @@ public class ClientModelManager {
                 int imageFormat = buf.readVarInt();
                 int unkImageData = buf.readVarInt();
 
-                iconTexture = new OuterFileTexture(textureData);
+                byte[] png = YSMClientMapper.toPng(textureData, imageFormat, textureWidth, textureHeight);
+
+                iconTexture = new OuterFileTexture(png);
             }
 
             String folderName = "";
@@ -756,27 +442,36 @@ public class ClientModelManager {
             onModelPacksReceived(parsedPacks.toArray(new ModelPackData[0]));
         }
 
-        Set<String> validServerModelIds = new HashSet<>();
-        for (ServerModelContext ctx : serverModels.values()) {
-            validServerModelIds.add(ctx.modelId);
-        }
         List<String> modelsToRemove = new ArrayList<>();
+        if (modelAssemblyMap != null) {
+            for (String loadedId : modelAssemblyMap.keySet()) {
+                if ("default".equals(loadedId)) continue;
 
-//        if (modelAssemblyMap != null) {
-//            for (String loadedId : modelAssemblyMap.keySet()) {
-//                if (!validServerModelIds.contains(loadedId) && !"default".equals(loadedId)) {
-//                    modelsToRemove.add(loadedId);
-//                }
-//            }
-//        }
-//
-//        if (!modelsToRemove.isEmpty()) {
-//            onModelContextsUpdated(modelsToRemove.toArray(new String[0]), null, null, null);
-//            YesSteveModel.LOGGER.info("[YSM] Cleaned up {} outdated models during sync.", modelsToRemove.size());
-//        }
+                if (!validServerModelIds.contains(loadedId) && !(ClientOnlyMode.isForced() && localOnlyModelIds.contains(loadedId))) {
+                    modelsToRemove.add(loadedId);
+                } else if (modelsToRequest.stream().anyMatch(h -> serverModels.containsKey(new UUID(h.hash1, h.hash2)) && serverModels.get(new UUID(h.hash1, h.hash2)).modelId.equals(loadedId))) {
+                    modelsToRemove.add(loadedId);
+                }
+            }
+        }
+
+        if (!modelsToRemove.isEmpty() || !previousModelIds.isEmpty()) {
+            boolean[] readyArr = new boolean[isModelReadyList.size()];
+            for (int j = 0; j < isModelReadyList.size(); j++) {
+                readyArr[j] = isModelReadyList.get(j);
+            }
+
+            onModelContextsUpdated(
+                    modelsToRemove.isEmpty() ? null : modelsToRemove.toArray(new String[0]),
+                    previousModelIds.isEmpty() ? null : previousModelIds.toArray(new String[0]),
+                    updatedModelIds.isEmpty() ? null : updatedModelIds.toArray(new String[0]),
+                    readyArr
+            );
+            YesSteveModel.LOGGER.info("[YSM] Cleaned up {} outdated models and updated {} existing models during sync.", modelsToRemove.size(), previousModelIds.size());
+        }
 
         syncStep = 3;
-        pendingModelsCount = modelsToRequest.size();
+        pendingModelsCount.set(modelsToRequest.size());
 
         int garbageLen = 16 + SECURE_RANDOM.nextInt(48);
         byte[] garbage = new byte[garbageLen];
@@ -796,9 +491,11 @@ public class ClientModelManager {
             sendModelFile(ByteBuffer.wrap(result.data()));
         }
 
-        if (pendingModelsCount == 0) {
-            YesSteveModel.LOGGER.info("[YSM] All models loaded from local cache. Handshake complete!");
-            onSyncComplete();
+        if (pendingModelsCount.get() == 0) {
+            modelPhraseExecutor.submit(() -> {
+                YesSteveModel.LOGGER.info("[YSM] All models loaded from local cache. Handshake complete!");
+                onSyncComplete();
+            });
         }
     }
 
@@ -832,30 +529,37 @@ public class ClientModelManager {
         ctx.bytesReceived += chunkLength;
 
         if (ctx.bytesReceived >= totalSize) {
-            String folder = currentCacheFolderName != null ? currentCacheFolderName : "default_cache";
-            File cacheDir = ServerModelManager.CACHE_CLIENT.resolve(folder).toFile();
-            if (!cacheDir.exists()) cacheDir.mkdirs();
+            byte[] fileBuffer = ctx.fileBuffer;
 
-            byte[] cachedFileData = YsmCrypt.transcodeServerDataToClientCache(ctx.fileBuffer, serverKey, clientKey, hash1, hash2);
+            modelPhraseExecutor.submit(() -> {
+                if (clientKey == null) return;
+                try {
+                    String folder = currentCacheFolderName != null ? currentCacheFolderName : "default_cache";
+                    File cacheDir = ServerModelManager.CACHE_CLIENT.resolve(folder).toFile();
+                    if (!cacheDir.exists()) cacheDir.mkdirs();
 
-            String legitFileName = YSMClientCache.generateCacheFileName(hash1, hash2, clientKey);
-            File outFile = new File(cacheDir, legitFileName);
+                    byte[] cachedFileData = YsmCrypt.transcodeServerDataToClientCache(fileBuffer, serverKey, clientKey, hash1, hash2);
 
-            try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                fos.write(cachedFileData);
-            }
-            ctx.fileBuffer = null;
+                    String legitFileName = YSMClientCache.generateCacheFileName(hash1, hash2, clientKey);
+                    File outFile = new File(cacheDir, legitFileName);
 
-            YesSteveModel.LOGGER.info("[YSM] Downloaded & Cached: " + outFile.getAbsolutePath());
-            byte[] decompressed = YsmCrypt.read(cachedFileData, clientKey);
+                    try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                        fos.write(cachedFileData);
+                    }
 
-            parseAndLoadModel(decompressed, ctx.modelId, ctx.isAuth);
+                    YesSteveModel.LOGGER.info("[YSM] Downloaded & Cached: " + outFile.getAbsolutePath());
+                    byte[] decompressed = YsmCrypt.read(cachedFileData, clientKey);
 
-            pendingModelsCount--;
-            if (pendingModelsCount <= 0) {
-                YesSteveModel.LOGGER.info("[YSM] All missing models downloaded and loaded successfully!");
-                onSyncComplete();
-            }
+                    parseAndLoadModel(decompressed, ctx.modelId, ctx.isAuth);
+                } catch (Exception e) {
+                    YesSteveModel.LOGGER.error("[YSM] Failed to save/parse downloaded model: " + ctx.modelId, e);
+                } finally {
+                    if (pendingModelsCount.decrementAndGet() <= 0) {
+                        YesSteveModel.LOGGER.info("[YSM] All missing models downloaded and loaded successfully!");
+                        onSyncComplete();
+                    }
+                }
+            });
         }
     }
 
@@ -909,30 +613,21 @@ public class ClientModelManager {
         lastKey = null;
         serverKey = null;
         clientKey = null;
+
+        modelPhraseExecutor.getQueue().clear();
+
         currentCacheFolderName = null;
-        pendingModelsCount = 0;
+        pendingModelsCount.set(0);
         cachedModelHashes.clear();
+        localOnlyModelIds.clear();
 
         serverModels.clear();
-
-        Map<String, ModelAssembly> oldModels = modelAssemblyMap;
-        if (oldModels != null && !oldModels.isEmpty()) {
-            Minecraft.getInstance().execute(() -> {
-                for (ModelAssembly model : oldModels.values()) {
-                    if (model != null) {
-                        for (AbstractTexture tex : model.getTextures()) {
-                            UploadManager.removeTexture(tex);
-                        }
-                    }
-                }
-            });
-        }
 
         Map<String, ModelPackData> oldPreviews = modelPackMap;
         if (oldPreviews != null && !oldPreviews.isEmpty()) {
             for (ModelPackData preview : oldPreviews.values()) {
                 if (preview.getTexture() != null) {
-                    ResourceLocation loc = FileTypeUtil.getPackIconLocation(preview.getPath());
+                    Identifier loc = FileTypeUtil.getPackIconLocation(preview.getPath());
                     Minecraft.getInstance().execute(() -> {
                         Minecraft.getInstance().getTextureManager().release(loc);
                     });
@@ -940,15 +635,19 @@ public class ClientModelManager {
             }
         }
 
-        modelAssemblyMap = Object2ReferenceMaps.emptyMap();
         modelPackMap = new Object2ReferenceOpenHashMap<>();
-//        localModelContext = null;
+        localModelContext = null;
+        defaultTexture = null;
         pendingModelCallback = null;
         pendingModelQueue.clear();
+        loadDefaultModel();
 
         forEachGuiWidget(l -> {
-            try { l.onSyncBegin(); }
-            catch (Throwable t) { t.printStackTrace(); }
+            try {
+                l.onSyncBegin();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
         });
     }
 
@@ -959,14 +658,6 @@ public class ClientModelManager {
 
     public static Map<String, ModelAssembly> getModelAssemblyMap() {
         return modelAssemblyMap;
-    }
-
-    /**
-     * 判断某个 modelId 是否是服务端同步过来的模型（而非本地加载的）。
-     * 用于 ModelButton 决定是否发包给服务端。
-     */
-    public static boolean isServerModel(String modelId) {
-        return serverModels.values().stream().anyMatch(ctx -> modelId.equals(ctx.modelId));
     }
 
     public static Map<String, ModelPackData> getModelPackMap() {
@@ -994,7 +685,10 @@ public class ClientModelManager {
             model = reg.get("default");
             if (model == null) {
                 for (ModelAssembly v : reg.values()) {
-                    if (v != null) { model = v; break; }
+                    if (v != null) {
+                        model = v;
+                        break;
+                    }
                 }
             }
             if (model != null) {
@@ -1005,7 +699,7 @@ public class ClientModelManager {
         return null;
     }
 
-    public static ResourceLocation getDefaultTexture() {
+    public static Identifier getDefaultTexture() {
         return defaultTexture.getResourceLocation().get();
     }
 
@@ -1030,31 +724,26 @@ public class ClientModelManager {
     }
 
     public static void resetSync() {
+        isOysmServer = false;
+        allowUpload = false;
+        ClientOnlyMode.reset();
         processServerData(null);
-        NetworkHandler.resetClientHandshake();
-        // 改为同步执行，避免异步排队的 setState(WAITING) 覆盖后续 onSyncConnected 里的 setState(LOADING)
-        syncState.setState(SyncState.WAITING);
-    }
-
-    /** 오프라인 모드 전용: modelAssemblyMap에 있는 현재 모델들을 보존한 채 동기 상태만 초기화 */
-    public static void resetSyncKeepModels() {
-        syncStep = 1;
-        key1 = null;
-        lastKey = null;
-        serverKey = null;
-        clientKey = null;
-        currentCacheFolderName = null;
-        pendingModelsCount = 0;
-        cachedModelHashes.clear();
-        serverModels.clear();
-        // modelAssemblyMap 는 건드리지 않음 - 오프라인 모델 유지
-        modelPackMap = new Object2ReferenceOpenHashMap<>();
-        pendingModelCallback = null;
-        pendingModelQueue.clear();
         NetworkHandler.resetClientHandshake();
         Minecraft.getInstance().execute(() -> {
             syncState.setState(SyncState.WAITING);
         });
+    }
+
+    public static boolean isAllowUpload() {
+        return allowUpload;
+    }
+
+    public static boolean isOysmServer() {
+        return isOysmServer;
+    }
+
+    public static boolean isServerModel(String modelId) {
+        return serverModels.values().stream().anyMatch(context -> context.modelId.equals(modelId));
     }
 
     private static void sendModelFile(ByteBuffer byteBuffer) {
@@ -1084,11 +773,12 @@ public class ClientModelManager {
     }
 
     public static void onSyncConnected() {
-        // 无论单人还是多人，始终加载本地模型
-        syncState.setState(SyncState.LOADING);
+        if (Minecraft.getInstance().isLocalServer()) {
+            syncState.setState(SyncState.LOADING);
+        } else {
+            syncState.setState(SyncState.IDLE);
+        }
         forEachGuiWidget(IGuiWidget::onSyncBegin);
-        // 在后台扫描并加载 built/ 和 custom/ 目录里的模型
-        loadLocalModels();
     }
 
     private static void onSyncProgress(int totalModels) {
@@ -1119,7 +809,7 @@ public class ClientModelManager {
             newPackMap.put(packData.getPath(), packData);
             OuterFileTexture iconTexture = packData.getTexture();
             if (iconTexture != null) {
-                ResourceLocation location2 = FileTypeUtil.getPackIconLocation(packData.getPath());
+                Identifier location2 = FileTypeUtil.getPackIconLocation(packData.getPath());
                 Minecraft.getInstance().submit(() -> {
                     Minecraft.getInstance().getTextureManager().register(location2, iconTexture);
                     iconTexture.load();
@@ -1129,7 +819,7 @@ public class ClientModelManager {
 
         for (ModelPackData packData : modelPackMap.values()) {
             if (!newPackMap.containsKey(packData.getPath()) && packData.getTexture() != null) {
-                ResourceLocation location = FileTypeUtil.getPackIconLocation(packData.getPath());
+                Identifier location = FileTypeUtil.getPackIconLocation(packData.getPath());
                 Minecraft.getInstance().submit(() -> Minecraft.getInstance().getTextureManager().release(location));
             }
         }
@@ -1151,6 +841,16 @@ public class ClientModelManager {
                     for (ModelAssembly assembly : removed) {
                         for (AbstractTexture tex : assembly.getTextures())
                             UploadManager.removeTexture(tex);
+                        if (NativeLibLoader.isLoaded()) {
+                            for (Map.Entry<Identifier, ProjectileModelBundle> entry : assembly.getProjectileModels().entrySet()) {
+                                entry.getValue().getModel().freeNativeCache();
+                            }
+                            for (Map.Entry<Identifier, VehicleModelBundle> entry : assembly.getVehicleModels().entrySet()) {
+                                entry.getValue().getModel().freeNativeCache();
+                            }
+                            assembly.getAnimationBundle().getMainModel().freeNativeCache();
+                            assembly.getAnimationBundle().getArmModel().freeNativeCache();
+                        }
                     }
                 });
             }
@@ -1241,13 +941,16 @@ public class ClientModelManager {
 
         Minecraft.getInstance().execute(() -> {
             syncState.setState(SyncState.IDLE);
-            LocalPlayer player = Minecraft.getInstance().player;
-            if (player != null) {
-                lockLocalPlayerUuid(player);
-            }
-            scheduleRememberedOfflineModelApplyForLockedUuid();
             forEachGuiWidget(IGuiWidget::onSyncComplete);
         });
+    }
+
+    public static void setAllowUpload(boolean allowUpload) {
+        ClientModelManager.allowUpload = allowUpload;
+    }
+
+    public static void setOysmServer(boolean isOysmServer) {
+        ClientModelManager.isOysmServer = isOysmServer;
     }
 
     private static void onSyncError(@Nullable Object obj) {

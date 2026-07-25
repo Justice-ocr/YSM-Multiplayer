@@ -20,10 +20,20 @@ public class PlayerAnimationPredicate implements IAnimationPredicate<CustomPlaye
         if (player.getPose() == Pose.SWIMMING) {
             return PlayState.STOP;
         }
-        if (player.isFallFlying() || player.getPose() == Pose.FALL_FLYING || player.getFallFlyingTicks() > 0) {
+        if (player.getPose() == Pose.FALL_FLYING && player.isFallFlying()) {
             return PlayState.STOP;
         }
         switch (CarryOnDataHelper.getCarryType(player)) {
+            case ENTITY :{
+                return IAnimationPredicate.playLoopAnimation(event, "carryon:entity");
+            }
+            case BLOCK :{
+                return IAnimationPredicate.playLoopAnimation(event, "carryon:block");
+            }
+            case PLAYER: {
+                return IAnimationPredicate.playLoopAnimation(event, "carryon:player");
+            }
+
         }
         return PlayState.STOP;
     }

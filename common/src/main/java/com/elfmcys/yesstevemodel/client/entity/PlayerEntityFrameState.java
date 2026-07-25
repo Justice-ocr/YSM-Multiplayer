@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.Object2ByteOpenHashMap;
 import net.minecraft.core.Holder;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 
 public class PlayerEntityFrameState extends LivingEntityFrameState<Player> {
@@ -15,8 +14,6 @@ public class PlayerEntityFrameState extends LivingEntityFrameState<Player> {
     private final Object2ByteOpenHashMap<Holder<MobEffect>> effectAmplifiers;
 
     private boolean isFlying;
-
-    private boolean isFallFlying;
 
     private int experienceLevel;
 
@@ -49,7 +46,6 @@ public class PlayerEntityFrameState extends LivingEntityFrameState<Player> {
         super.reset();
         this.effectAmplifiers.clear();
         this.isFlying = false;
-        this.isFallFlying = false;
         this.experienceLevel = 0;
         this.health = 0;
         this.maxHealth = 0;
@@ -63,9 +59,6 @@ public class PlayerEntityFrameState extends LivingEntityFrameState<Player> {
     public void applySyncMessage(S2CSyncPlayerStatePacket message) {
         if ((message.flags & 2) != 0) {
             this.isFlying = message.isFlying;
-        }
-        if ((message.flags & 8192) != 0) {
-            this.isFallFlying = message.isFallFlying;
         }
         if ((message.flags & 4) != 0) {
             if (message.isFullSync()) {
@@ -104,13 +97,6 @@ public class PlayerEntityFrameState extends LivingEntityFrameState<Player> {
             return this.entity.getAbilities().flying;
         }
         return this.isFlying;
-    }
-
-    public boolean isFallFlying() {
-        if (this.isLocalPlayer) {
-            return this.entity.isFallFlying() || this.entity.getPose() == Pose.FALL_FLYING || this.entity.getFallFlyingTicks() > 0;
-        }
-        return this.isFallFlying;
     }
 
     public int getExperienceLevel() {

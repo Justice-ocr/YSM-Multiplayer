@@ -11,7 +11,7 @@ import it.unimi.dsi.fastutil.objects.ReferenceIntMutablePair;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.apache.commons.lang3.time.StopWatch;
 
 import java.lang.ref.WeakReference;
@@ -28,9 +28,9 @@ public class UploadManager {
 
     private static final Queue<Pair<TextureLocatable, AbstractTexture>> pendingUploads = Queues.newArrayDeque();
 
-    private static final ConcurrentHashMap<AbstractTexture, ReferenceIntMutablePair<ResourceLocation>> expiredTextures = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<AbstractTexture, ReferenceIntMutablePair<Identifier>> expiredTextures = new ConcurrentHashMap<>();
 
-    private static final Queue<ResourceLocation> pendingReleases = Queues.newArrayDeque();
+    private static final Queue<Identifier> pendingReleases = Queues.newArrayDeque();
 
     public static IResourceLocatable getOrCreateLocatable(AbstractTexture texture, boolean register) {
         return getOrCreateLocatableWithSize(texture, register, 200);
@@ -49,7 +49,7 @@ public class UploadManager {
             }
             textureCache.remove(texture);
         }
-        ReferenceIntMutablePair<ResourceLocation> removed = expiredTextures.remove(texture);
+        ReferenceIntMutablePair<Identifier> removed = expiredTextures.remove(texture);
         TextureLocatable locatable;
         if (removed != null) {
             locatable = new TextureLocatable(removed.first(), sizeHint);
@@ -81,9 +81,9 @@ public class UploadManager {
     public static void processPendingUploads() {
         RenderSystem.assertOnRenderThread();
         if (!expiredTextures.isEmpty()) {
-            Iterator<Map.Entry<AbstractTexture, ReferenceIntMutablePair<ResourceLocation>>> it = expiredTextures.entrySet().iterator();
+            Iterator<Map.Entry<AbstractTexture, ReferenceIntMutablePair<Identifier>>> it = expiredTextures.entrySet().iterator();
             while (it.hasNext()) {
-                Map.Entry<AbstractTexture, ReferenceIntMutablePair<ResourceLocation>> next = it.next();
+                Map.Entry<AbstractTexture, ReferenceIntMutablePair<Identifier>> next = it.next();
                 int iSecondInt = next.getValue().secondInt();
                 if (iSecondInt <= 0) {
                     pendingReleases.add(next.getValue().first());
@@ -101,7 +101,7 @@ public class UploadManager {
             } else {
                 TextureManager textureManager = Minecraft.getInstance().getTextureManager();
                 do {
-                    ResourceLocation resourceLocationPoll = pendingReleases.poll();
+                    Identifier resourceLocationPoll = pendingReleases.poll();
                     if (resourceLocationPoll != null) {
                         textureManager.release(resourceLocationPoll);
                     } else {
@@ -115,14 +115,14 @@ public class UploadManager {
 
     private static void registerTexture(AbstractTexture texture, TextureLocatable locatable) {
         if (!locatable.registered) {
-            Minecraft.getInstance().getTextureManager().register(locatable.resourceLocation, texture);
+            Minecraft.getInstance().getTextureManager().register(locatable.identifier, texture);
 
             if (texture instanceof OuterFileTexture oft) {
                 oft.load();
             }
 
-            ResourceCleanupHelper.registerBiCleanup(locatable, locatable.resourceLocation, locatable.resolution, (resourceLocation, num) -> {
-                expiredTextures.put(texture, ReferenceIntMutablePair.of(resourceLocation, num));
+            ResourceCleanupHelper.registerBiCleanup(locatable, locatable.identifier, locatable.resolution, (id, num) -> {
+                expiredTextures.put(texture, ReferenceIntMutablePair.of(id, num));
             });
             locatable.markRegistered();
         }
@@ -130,7 +130,7 @@ public class UploadManager {
 
     private static class TextureLocatable implements IResourceLocatable {
 
-        private final ResourceLocation resourceLocation;
+        private final Identifier identifier;
 
         private final int resolution;
 
@@ -138,20 +138,20 @@ public class UploadManager {
 
         private volatile boolean registered;
 
-        public TextureLocatable(ResourceLocation resourceLocation, int resolution) {
-            this.resourceLocation = resourceLocation;
+        public TextureLocatable(Identifier identifier, int resolution) {
+            this.identifier = identifier;
             this.resolution = resolution;
         }
 
         TextureLocatable(int resolution) {
-            this.resourceLocation = ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "textures/" + ++textureCounter);
+            this.identifier = Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "textures/" + ++textureCounter);
             this.resolution = resolution;
             this.registered = false;
         }
 
         @Override
-        public Optional<ResourceLocation> getResourceLocation() {
-            return this.registered ? Optional.of(this.resourceLocation) : Optional.empty();
+        public Optional<Identifier> getResourceLocation() {
+            return this.registered ? Optional.of(this.identifier) : Optional.empty();
         }
 
         public void markRegistered() {

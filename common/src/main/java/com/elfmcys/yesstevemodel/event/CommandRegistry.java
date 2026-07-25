@@ -12,12 +12,13 @@ import com.google.common.collect.Sets;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
+import dev.architectury.event.events.client.ClientCommandRegistrationEvent;
 import dev.architectury.event.events.common.CommandRegistrationEvent;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceMap;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.synchronization.SuggestionProviders;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import rip.ysm.api.PlatformAPI;
 
 import java.util.HashSet;
@@ -29,7 +30,7 @@ public final class CommandRegistry {
     private CommandRegistry() {
     }
 
-    public static final SuggestionProvider<CommandSourceStack> MODEL_IDS = SuggestionProviders.register(ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "models"), (commandContext, suggestionsBuilder) -> {
+    public static final SuggestionProvider<CommandSourceStack> MODEL_IDS = SuggestionProviders.register(Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "models"), (commandContext, suggestionsBuilder) -> {
         if (commandContext.getSource() instanceof SharedSuggestionProvider) {
             if (PlatformAPI.isServer()) {
                 return SharedSuggestionProvider.suggest(ServerModelManager.getServerModelInfo().keySet().stream().map(CommandRegistry::escapeIfRequired).toList(), suggestionsBuilder);
@@ -39,7 +40,7 @@ public final class CommandRegistry {
         return Suggestions.empty();
     });
 
-    public static final SuggestionProvider<CommandSourceStack> ANIMATION_NAMES = SuggestionProviders.register(ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "animations"), (commandContext, suggestionsBuilder) -> {
+    public static final SuggestionProvider<CommandSourceStack> ANIMATION_NAMES = SuggestionProviders.register(Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "animations"), (commandContext, suggestionsBuilder) -> {
         if (commandContext.getSource() instanceof SharedSuggestionProvider) {
             if (PlatformAPI.isServer()) {
                 return Suggestions.empty();
@@ -53,7 +54,7 @@ public final class CommandRegistry {
         return Suggestions.empty();
     });
 
-    public static final SuggestionProvider<CommandSourceStack> TEXTURE_IDS = SuggestionProviders.register(ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "textures"), (commandContext, suggestionsBuilder) -> {
+    public static final SuggestionProvider<CommandSourceStack> TEXTURE_IDS = SuggestionProviders.register(Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "textures"), (commandContext, suggestionsBuilder) -> {
         if (commandContext.getSource() instanceof SharedSuggestionProvider) {
             String str = commandContext.getArgument("model_id", String.class);
             if (PlatformAPI.isServer()) {
@@ -72,12 +73,17 @@ public final class CommandRegistry {
     });
 
     public static void register() {
+        ClientCommandRegistrationEvent.EVENT.register((dispatcher, context) -> {
+            if (!YesSteveModel.isAvailable()) {
+                return;
+            }
+            OpenYSMClientCommand.registerClientCommands(dispatcher);
+        });
         CommandRegistrationEvent.EVENT.register((dispatcher, registry, selection) -> {
             if (!YesSteveModel.isAvailable()) {
                 RootCommand.registerFallbackCommands(dispatcher);
                 return;
             }
-            OpenYSMClientCommand.registerClientCommands(dispatcher);
             RootCommand.registerCommands(dispatcher);
             if (!PlatformAPI.isServer()) {
                 RootClientCommand.registerClientCommands(dispatcher);

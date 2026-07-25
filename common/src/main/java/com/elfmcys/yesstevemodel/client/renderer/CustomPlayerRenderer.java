@@ -2,7 +2,7 @@ package com.elfmcys.yesstevemodel.client.renderer;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
 import com.elfmcys.yesstevemodel.client.entity.PlayerPreviewEntity;
-import net.minecraft.client.renderer.entity.state.PlayerRenderState;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
@@ -22,15 +22,15 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.scores.Team;
 import org.jetbrains.annotations.NotNull;
 
-public class CustomPlayerRenderer extends GeoReplacedEntityRenderer<Player, CustomPlayerEntity, PlayerRenderState> {
+public class CustomPlayerRenderer extends GeoReplacedEntityRenderer<Player, CustomPlayerEntity, AvatarRenderState> {
 
-    private ResourceLocation currentTexture;
+    private Identifier currentTexture;
     private Player currentPlayer;
 
     public CustomPlayerRenderer(EntityRendererProvider.Context context) {
@@ -41,7 +41,7 @@ public class CustomPlayerRenderer extends GeoReplacedEntityRenderer<Player, Cust
         addLayerRenderer(new CustomPlayerArmorLayer(context));
     }
 
-    public void render(Player player, PlayerRenderState renderState, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
+    public void render(Player player, AvatarRenderState renderState, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
         PlayerCapability capability;
         if (SWarfareCompat.isPlayerAiming(player) || (capability = PlayerCapability.get(player).orElse(null)) == null) {
             return;
@@ -88,17 +88,17 @@ public class CustomPlayerRenderer extends GeoReplacedEntityRenderer<Player, Cust
     }
 
     @Override
-    public @NotNull PlayerRenderState createRenderState() {
-        return new PlayerRenderState();
+    public @NotNull AvatarRenderState createRenderState() {
+        return new AvatarRenderState();
     }
 
     @NotNull
-    public ResourceLocation getTextureLocation(Player player) {
+    public Identifier getTextureLocation(Player player) {
         return this.currentTexture == null ? PlayerCapability.get(player).map((cap) -> cap.getTextureLocation()).orElse(MissingTextureAtlasSprite.getLocation()) : this.currentTexture;
     }
 
     @Override
-    public net.minecraft.resources.ResourceLocation getTextureLocation(net.minecraft.client.renderer.entity.state.PlayerRenderState state) {
+    public net.minecraft.resources.Identifier getTextureLocation(net.minecraft.client.renderer.entity.state.AvatarRenderState state) {
         if (this.currentTexture != null) {
             return this.currentTexture;
         }
@@ -117,7 +117,7 @@ public class CustomPlayerRenderer extends GeoReplacedEntityRenderer<Player, Cust
 
     // TODO: port to 1.21.4
 //    @Override
-//    protected void renderNameTag(PlayerRenderState entityRenderState, Component component, PoseStack poseStack, MultiBufferSource multiBufferSource, int i) {
+//    protected void renderNameTag(AvatarRenderState entityRenderState, Component component, PoseStack poseStack, MultiBufferSource multiBufferSource, int i) {
 //        Scoreboard scoreboard;
 //        Objective displayObjective;
 //        if (PlayerPreviewEntity.isPreviewPlayer(player)) {
@@ -134,7 +134,7 @@ public class CustomPlayerRenderer extends GeoReplacedEntityRenderer<Player, Cust
 //    }
 
     @Override
-    public void setupRotations(Player player, PlayerRenderState state, PoseStack poseStack, float ageInTicks, float rotationYaw, float partialTicks, float scale) {
+    public void setupRotations(Player player, AvatarRenderState state, PoseStack poseStack, float ageInTicks, float rotationYaw, float partialTicks, float scale) {
         super.setupRotations(player, state, poseStack, ageInTicks, rotationYaw, partialTicks, scale);
         Entity vehicle = player.getVehicle();
         if (TouhouLittleMaidCompat.isSimplePlanesEntity(vehicle) || TouhouLittleMaidCompat.isImmersiveAircraftEntity(vehicle)) {

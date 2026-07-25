@@ -175,7 +175,7 @@
         "model": "models/minecart.json",
         "texture": "textures/minecart.png"
       },
-      "minecraft:boat": {
+      "#minecraft:boat": {
         "model": "models/boat.json",
         "texture": "textures/boat.png"
       }

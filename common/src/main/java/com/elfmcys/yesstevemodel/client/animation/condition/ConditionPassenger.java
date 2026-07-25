@@ -4,7 +4,7 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -14,7 +14,7 @@ public class ConditionPassenger {
 
     private static final String EMPTY = "";
 
-    private final ObjectOpenHashSet<ResourceLocation> idTest = new ObjectOpenHashSet<>();
+    private final ObjectOpenHashSet<Identifier> idTest = new ObjectOpenHashSet<>();
 
     private final ReferenceArrayList<TagKey<EntityType<?>>> tagTest = new ReferenceArrayList<>();
 
@@ -32,13 +32,13 @@ public class ConditionPassenger {
             return;
         }
         String strSubstring = name.substring(preSize);
-        if (name.startsWith(this.idPre) && (ResourceLocation.tryParse(strSubstring) != null)) {
-            this.idTest.add(ResourceLocation.parse(strSubstring));
+        if (name.startsWith(this.idPre) && (Identifier.tryParse(strSubstring) != null)) {
+            this.idTest.add(Identifier.parse(strSubstring));
         }
-        if (!name.startsWith(this.tagPre) || !(ResourceLocation.tryParse(strSubstring) != null)) {
+        if (!name.startsWith(this.tagPre) || !(Identifier.tryParse(strSubstring) != null)) {
             return;
         }
-        this.tagTest.add(TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.parse(strSubstring)));
+        this.tagTest.add(TagKey.create(Registries.ENTITY_TYPE, Identifier.parse(strSubstring)));
     }
 
     public String doTest(LivingEntity entity) {
@@ -54,7 +54,7 @@ public class ConditionPassenger {
     }
 
     private String doIdTest(Entity entity) {
-        ResourceLocation key;
+        Identifier key;
         if (!this.idTest.isEmpty() && (key = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType())) != null && this.idTest.contains(key)) {
             return this.idPre + key;
         }

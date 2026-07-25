@@ -11,6 +11,7 @@
     "client.BufferSourceMixin",
     "client.EntityRenderDispatcherAccessor",
     "client.EntityRenderDispatcherMixin",
+    "client.EntityRendererMixin",
     "client.FishingHookAccessor",
     "client.GuiEntityRendererMixin",
     "client.InventoryScreenMixin",
@@ -19,7 +20,8 @@
     "client.PauseScreenMixin",
     "client.ScreenAccessor",
     "client.ThrowableItemProjectileAccessor",
-    "client.WorldRendererMixin"
+    "client.WorldRendererMixin",
+    "client.GlBufferAccessor"
   ],
   "mixins": [
     "AbstractArrowEntityMixin",

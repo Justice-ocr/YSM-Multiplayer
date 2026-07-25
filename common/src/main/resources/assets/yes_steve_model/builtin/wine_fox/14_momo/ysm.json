@@ -92,8 +92,7 @@
         }
       }
     ],
-    "default_texture": "skin_pink",
-    "gui_no_lighting": false
+    "default_texture": "skin_pink"
   },
   "files": {
     "player": {

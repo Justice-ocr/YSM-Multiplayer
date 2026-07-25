@@ -26,8 +26,6 @@ public final class PlayerCapabilityClientStore {
             return Optional.of(existing);
         }
         PlayerCapability fresh = new PlayerCapability(player);
-        // 注意：子服/维度切换时的 cap 状态迁移由 ClientPlayerCloneEvent.onClientPlayerRespawn 处理
-        // 此处不再重复复制，避免双重赋值
         STORE.put(uuid, fresh);
         return Optional.of(fresh);
     }

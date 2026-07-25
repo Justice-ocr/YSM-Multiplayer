@@ -5,6 +5,8 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.Permission;
+import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import dev.architectury.utils.GameInstance;
@@ -23,15 +25,27 @@ public class YSMMessageFormatter {
         return entity != null && !PlatformAPI.isServer() && entity.getUUID().equals(Minecraft.getInstance().getUser().getProfileId());
     }
 
+    private static Permission permissionFor(int level) {
+        return switch (level) {
+            case 0 -> null;
+            case 1 -> Permissions.COMMANDS_MODERATOR;
+            case 2 -> Permissions.COMMANDS_GAMEMASTER;
+            case 3 -> Permissions.COMMANDS_ADMIN;
+            default -> Permissions.COMMANDS_OWNER;
+        };
+    }
+
     public static boolean hasPermission(@Nullable Entity entity, int level) {
         if (entity == null) {
             return false;
         }
-        return (entity instanceof Player p && p.hasPermissions(level)) || isCurrentClientPlayer(entity);
+        Permission permission = permissionFor(level);
+        return (entity instanceof Player p && (permission == null || p.permissions().hasPermission(permission))) || isCurrentClientPlayer(entity);
     }
 
     public static boolean hasCommandPermission(CommandSourceStack commandSourceStack, int level) {
-        if (commandSourceStack.hasPermission(level)) {
+        Permission permission = permissionFor(level);
+        if (permission == null || commandSourceStack.permissions().hasPermission(permission)) {
             return true;
         }
         return commandSourceStack.getEntity() != null && isCurrentClientPlayer(commandSourceStack.getEntity());

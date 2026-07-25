@@ -25,11 +25,18 @@ layout(std430, binding = 0) readonly buffer BoneBlock {
     BoneData bones[];
 };
 
-uniform mat4 u_proj;
+layout(std140) uniform ProjectionBlock {
+    mat4 u_proj;
+};
+
+uniform mat4 u_modelView;
 uniform vec4 u_color;
 uniform int  u_fogShape;
-uniform vec3 u_light0;
-uniform vec3 u_light1;
+
+layout(std140) uniform LightingBlock {
+    vec3 u_light0;
+    vec3 u_light1;
+};
 
 out vec2  v_uv;
 out vec3  v_normal;
@@ -65,7 +72,7 @@ void main() {
         v_packedLight = 0;
         return;
     }
-    vec4 eyePos = b.transform * vec4(a_position, 1.0);
+    vec4 eyePos = u_modelView * b.transform * vec4(a_position, 1.0);
     gl_Position = u_proj * eyePos;
 
     vec3 nrm = normalize((b.normal * vec4(a_normal.xyz, 0.0)).xyz);

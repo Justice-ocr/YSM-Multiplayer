@@ -1,10 +1,10 @@
 package com.elfmcys.yesstevemodel.geckolib3.extended;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.client.renderer.state.CameraRenderState;
 
 public interface LivingEntityRendererAccessor {
-    void tlm$renderNameTag(LivingEntityRenderState state, PoseStack pPoseStack, MultiBufferSource pBuffer, int pPackedLight);
+    void tlm$renderNameTag(LivingEntityRenderState state, PoseStack pPoseStack, SubmitNodeCollector collector, CameraRenderState cameraState);
 }

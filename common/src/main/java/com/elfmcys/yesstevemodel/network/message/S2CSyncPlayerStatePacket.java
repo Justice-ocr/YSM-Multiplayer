@@ -1,7 +1,6 @@
 package com.elfmcys.yesstevemodel.network.message;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
-import com.elfmcys.yesstevemodel.client.ClientModelManager;
 import com.elfmcys.yesstevemodel.event.EntityJoinCallbackEvent;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import it.unimi.dsi.fastutil.ints.Int2FloatArrayMap;
@@ -28,8 +27,6 @@ public class S2CSyncPlayerStatePacket {
     public short flags;
 
     public boolean isFlying;
-
-    public boolean isFallFlying;
 
     public Object2ByteMap<Holder<MobEffect>> effectAmplifiers;
 
@@ -83,12 +80,6 @@ public class S2CSyncPlayerStatePacket {
     public S2CSyncPlayerStatePacket setFlying(boolean isFlying) {
         this.flags = (short) (this.flags | 2);
         this.isFlying = isFlying;
-        return this;
-    }
-
-    public S2CSyncPlayerStatePacket setFallFlying(boolean isFallFlying) {
-        this.flags = (short) (this.flags | 8192);
-        this.isFallFlying = isFallFlying;
         return this;
     }
 
@@ -188,9 +179,6 @@ public class S2CSyncPlayerStatePacket {
         if ((flags & 2) != 0) {
             buffer.writeBoolean(message.isFlying);
         }
-        if ((flags & 8192) != 0) {
-            buffer.writeBoolean(message.isFallFlying);
-        }
         if ((flags & 4) != 0) {
             buffer.writeVarInt(message.effectAmplifiers.size());
             Object2ByteMaps.fastForEach(message.effectAmplifiers, entry -> {
@@ -242,9 +230,6 @@ public class S2CSyncPlayerStatePacket {
         message.flags = flags;
         if ((flags & 2) != 0) {
             message.isFlying = buffer.readBoolean();
-        }
-        if ((flags & 8192) != 0) {
-            message.isFallFlying = buffer.readBoolean();
         }
         if ((flags & 4) != 0) {
             int effectCount = buffer.readVarInt();
@@ -326,15 +311,12 @@ public class S2CSyncPlayerStatePacket {
     public static void handleCapability(Entity entity, S2CSyncPlayerStatePacket message) {
         if (entity instanceof Player) {
             PlayerCapability.get(entity).ifPresent(cap -> {
-                boolean isLocalPlayer = ClientModelManager.isLocalPlayerEntity(entity);
-                if (!isLocalPlayer && (message.flags & 2048) != 0) {
+                if ((message.flags & 2048) != 0) {
                     if (!StringUtils.isEmpty(message.modelSwitchId)) {
                         cap.requestModelSwitch(message.modelSwitchId);
                     } else {
                         cap.clearModelSwitch();
                     }
-                } else if (isLocalPlayer && (message.flags & 2048) != 0) {
-                    ClientModelManager.scheduleRememberedOfflineModelApplyForLockedUuid();
                 }
                 if ((message.flags & 4096) != 0) {
                     if (message.isFullSync()) {

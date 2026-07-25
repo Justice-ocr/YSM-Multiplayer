@@ -10,6 +10,10 @@ public class GeneralConfig {
 
     public static ForgeConfigSpec.BooleanValue DISABLE_SELF_MODEL;
 
+    public static ForgeConfigSpec.BooleanValue FORCE_CLIENT_MODE;
+
+    public static ForgeConfigSpec.DoubleValue HANDSHAKE_TIMEOUT;
+
     public static ForgeConfigSpec.BooleanValue DISABLE_OTHER_MODEL;
 
     public static ForgeConfigSpec.BooleanValue DISABLE_SELF_HANDS;
@@ -22,16 +26,6 @@ public class GeneralConfig {
 
     public static ForgeConfigSpec.BooleanValue USE_COMPATIBILITY_RENDERER;
 
-    public static ForgeConfigSpec.BooleanValue USE_NATIVE_RENDERER;
-
-    public static ForgeConfigSpec.BooleanValue USE_EXPERIMENTAL_GPU_RENDERER;
-
-    public static ForgeConfigSpec.BooleanValue RENDER_PROFILING;
-
-    public static ForgeConfigSpec.ConfigValue<String> SELF_PLAYER_RENDER_ORDER;
-
-    public static ForgeConfigSpec.ConfigValue<String> OTHER_PLAYER_RENDER_ORDER;
-
     public static ForgeConfigSpec.DoubleValue SOUND_VOLUME;
 
     public static ForgeConfigSpec.BooleanValue SHOW_MODEL_ID_FIRST;
@@ -40,14 +34,42 @@ public class GeneralConfig {
 
     public static ForgeConfigSpec.BooleanValue PARCOOL;
 
-    /** 서버에 YSM 없을 때 자동으로 로컬 모델 적용 여부 */
-    public static ForgeConfigSpec.BooleanValue OFFLINE_MODEL_ENABLED;
+    public static ForgeConfigSpec.BooleanValue USE_GPU_RENDERER;
 
-    /** 마지막으로 선택한 로컬 모델 ID */
-    public static ForgeConfigSpec.ConfigValue<String> OFFLINE_MODEL_ID;
+    public static ForgeConfigSpec.EnumValue<RouletteSettingsMode> ROULETTE_SETTINGS_MODE;
 
-    /** 마지막으로 선택한 로컬 텍스처 ID */
-    public static ForgeConfigSpec.ConfigValue<String> OFFLINE_TEXTURE_ID;
+    public static ForgeConfigSpec.EnumValue<RouletteMode> ROULETTE_MODE;
+
+    public static ForgeConfigSpec.BooleanValue BLUR_GUI;
+
+    public static ForgeConfigSpec.EnumValue<TextureScreenMode> TEXTURE_SCREEN_MODE;
+
+    public static ForgeConfigSpec.EnumValue<ModelInfoScreenMode> MODEL_INFO_SCREEN_MODE;
+
+    public enum RouletteSettingsMode {
+        MODERN,
+        CLASSIC
+    }
+
+    public enum RouletteMode {
+        MODERN,
+        CLASSIC
+    }
+
+    public enum TextureScreenMode {
+        MODERN,
+        CLASSIC
+    }
+
+    public enum ModelInfoScreenMode {
+        MODERN,
+        CLASSIC
+    }
+
+    public static boolean effectiveModernRoulette() {
+        if (ROULETTE_MODE == null || ROULETTE_SETTINGS_MODE == null) return false;
+        return ROULETTE_MODE.get() == RouletteMode.MODERN && ROULETTE_SETTINGS_MODE.get() == RouletteSettingsMode.MODERN;
+    }
 
     public static ForgeConfigSpec buildSpec() {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -65,6 +87,10 @@ public class GeneralConfig {
         PRINT_ANIMATION_ROULETTE_MSG = builder.define("PrintAnimationRouletteMsg", false);
         builder.comment("Prevents rendering of self player's model");
         DISABLE_SELF_MODEL = builder.define("DisableSelfModel", false);
+        builder.comment("Always use client-only mode");
+        FORCE_CLIENT_MODE = builder.define("ForceClientMode", false);
+        builder.comment("Seconds to wait for the server to answer the handshake.");
+        HANDSHAKE_TIMEOUT = builder.defineInRange("HandshakeTimeout", 5.0d, 1.0d, 60.0d);
         builder.comment("Prevents rendering of other player's model");
         DISABLE_OTHER_MODEL = builder.define("DisableOtherModel", false);
         builder.comment("Prevents rendering of self player's hand");
@@ -77,16 +103,13 @@ public class GeneralConfig {
         DISABLE_EXTERNAL_FP_ANIM = builder.define("DisableExternalFirstPersonAnim", false);
         builder.comment("If rendering errors occur, try turning on this.");
         USE_COMPATIBILITY_RENDERER = builder.define("UseCompatibilityRenderer", false);
-        builder.comment("Experimental: use native SIMD model renderer when native cache is available.");
-        USE_NATIVE_RENDERER = builder.define("UseNativeRenderer", false);
-        builder.comment("Experimental: use the direct GPU model renderer when the native mesh and OpenGL SSBO path are available.");
-        USE_EXPERIMENTAL_GPU_RENDERER = builder.define("UseExperimentalGpuRenderer", false);
-        builder.comment("Print model renderer performance statistics to the log.");
-        RENDER_PROFILING = builder.define("RenderProfiling", false);
-        builder.comment("Comma separated self player render order. Supported values: VANILLA, LOCAL_YSM, SERVER_YSM.");
-        SELF_PLAYER_RENDER_ORDER = builder.define("SelfPlayerRenderOrder", "LOCAL_YSM");
-        builder.comment("Comma separated other player render order. Supported values: VANILLA, LOCAL_YSM, SERVER_YSM.");
-        OTHER_PLAYER_RENDER_ORDER = builder.define("OtherPlayerRenderOrder", "SERVER_YSM");
+        builder.comment("Test renderer.");
+        USE_GPU_RENDERER = builder.define("UseGpuRenderer", true);
+        ROULETTE_SETTINGS_MODE = builder.defineEnum("RouletteSettingsMode", RouletteSettingsMode.MODERN);
+        ROULETTE_MODE = builder.defineEnum("RouletteMode", RouletteMode.CLASSIC);
+        BLUR_GUI = builder.define("BlurGui", true);
+        TEXTURE_SCREEN_MODE = builder.defineEnum("TextureScreenMode", TextureScreenMode.MODERN);
+        MODEL_INFO_SCREEN_MODE = builder.defineEnum("ModelInfoScreenMode", ModelInfoScreenMode.MODERN);
         builder.comment("The amount of volume when the animation is played.");
         SOUND_VOLUME = builder.defineInRange("SoundVolume", 100.0d, 0.0d, 100.0d);
         builder.comment("Whether to display model ID first in the model selection screen, instead of the model name filled in by the model author.");
@@ -95,14 +118,6 @@ public class GeneralConfig {
         builder.push("Integration");
         SOPHISTICATEDBACKPACK = builder.define("SophisticatedBackpack", true);
         PARCOOL = builder.define("Parcool", true);
-        builder.pop();
-        builder.push("OfflineModel");
-        builder.comment("When connected to a server without YSM, automatically apply local model for self rendering.");
-        OFFLINE_MODEL_ENABLED = builder.define("OfflineModelEnabled", true);
-        builder.comment("Last selected local model ID (auto-saved).");
-        OFFLINE_MODEL_ID = builder.define("OfflineModelId", "");
-        builder.comment("Last selected local texture ID (auto-saved).");
-        OFFLINE_TEXTURE_ID = builder.define("OfflineTextureId", "");
         builder.pop();
     }
 }

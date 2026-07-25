@@ -7,7 +7,7 @@ import com.elfmcys.yesstevemodel.geckolib3.core.molang.context.IContext;
 import com.elfmcys.yesstevemodel.geckolib3.util.MolangUtils;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.funciton.entity.LivingEntityFunction;
 import com.elfmcys.yesstevemodel.molang.runtime.ExecutionContext;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -15,7 +15,7 @@ import net.minecraft.world.item.ItemStack;
 public class EquipmentItemAnyTag extends LivingEntityFunction {
     @Override
     public Object eval(ExecutionContext<IContext<LivingEntity>> context, ArgumentCollection arguments) {
-        EquipmentSlot slotType = MolangUtils.parseSlotType(context.entity(), arguments.getAsString(context, 0));
+        EquipmentSlot slotType = MolangUtils.parseSlotType(context, arguments, 0);
         if (slotType == null) {
             return null;
         }
@@ -24,7 +24,7 @@ public class EquipmentItemAnyTag extends LivingEntityFunction {
             return false;
         }
         for (int i = 1; i < arguments.size(); i++) {
-            ResourceLocation key = arguments.getResourceLocation(context, i);
+            Identifier key = arguments.getResourceLocation(context, i);
             if (key == null) {
                 return null;
             }

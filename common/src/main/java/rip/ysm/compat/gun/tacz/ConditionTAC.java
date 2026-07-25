@@ -1,7 +1,7 @@
 package rip.ysm.compat.gun.tacz;
 
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import org.apache.commons.lang3.StringUtils;
 import rip.ysm.compat.gun.swarfare.SWarfareCompat;
@@ -12,7 +12,7 @@ public class ConditionTAC {
 
     private final ObjectOpenHashSet<String> nameTest = new ObjectOpenHashSet<>();
 
-    private final ObjectOpenHashSet<ResourceLocation> idTest = new ObjectOpenHashSet<>();
+    private final ObjectOpenHashSet<Identifier> idTest = new ObjectOpenHashSet<>();
 
     public void addTest(String name) {
         if (!name.startsWith("tac:") || !name.contains("$")) {
@@ -23,9 +23,9 @@ public class ConditionTAC {
             return;
         }
         String str2 = strArrSplit[1];
-        if ((ResourceLocation.tryParse(str2) != null)) {
+        if ((Identifier.tryParse(str2) != null)) {
             this.nameTest.add(name);
-            this.idTest.add(ResourceLocation.parse(str2));
+            this.idTest.add(Identifier.parse(str2));
         }
     }
 
@@ -33,7 +33,7 @@ public class ConditionTAC {
         if (itemStack.isEmpty()) {
             return EMPTY;
         }
-        ResourceLocation gunId = TacCompat.getGunTexture(itemStack);
+        Identifier gunId = TacCompat.getGunTexture(itemStack);
         if (gunId == null) {
             gunId = SWarfareCompat.getGunTexture(itemStack);
             if (gunId == null) {

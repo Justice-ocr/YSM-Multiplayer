@@ -2,14 +2,14 @@ package com.elfmcys.yesstevemodel.network;
 
 import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.mixin.ConnectionAccessor;
-import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccess;
+import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccessor;
 import com.elfmcys.yesstevemodel.network.message.*;
 import io.netty.util.AttributeKey;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -21,38 +21,47 @@ public final class NetworkHandler {
 
     public static final String VERSION = "2.6.0";
 
-    public static final ResourceLocation CHANNEL_ID = ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, VERSION.replace('.', '_'));
+    public static final Identifier CHANNEL_ID = Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, VERSION.replace('.', '_'));
 
     private static final AttributeKey<String> CHANNEL_VERSION_KEY = AttributeKey.valueOf("yes_steve_model_channel_version");
 
-    private static volatile Connection clientHandshakeConnection;
+    private static volatile boolean clientHandshakeComplete = false;
+    private static volatile boolean serverSupportsModelSyncFragments = false;
 
     public static boolean setChannelVersion(Connection connection, String str) {
         return ((ConnectionAccessor) connection).ysm$getChannel().attr(CHANNEL_VERSION_KEY).compareAndSet(null, str);
     }
 
-    public static void markClientHandshakeComplete(Connection connection) {
-        clientHandshakeConnection = connection;
+    public static void markClientHandshakeComplete() {
+        clientHandshakeComplete = true;
     }
 
     public static void resetClientHandshake() {
-        clientHandshakeConnection = null;
+        clientHandshakeComplete = false;
+        serverSupportsModelSyncFragments = false;
+    }
+
+    public static void setServerSupportsModelSyncFragments(boolean supported) {
+        serverSupportsModelSyncFragments = supported;
+    }
+
+    public static boolean serverSupportsModelSyncFragments() {
+        return serverSupportsModelSyncFragments;
     }
 
     public static boolean isPlayerConnected(ServerPlayer serverPlayer) {
-        return serverPlayer.connection != null && isConnectionValid(((ServerCommonPacketListenerImplAccess) serverPlayer.connection).ysm$getConnection());
+        return serverPlayer.connection != null && isConnectionValid(((ServerCommonPacketListenerImplAccessor) serverPlayer.connection).ysm$getConnection());
     }
 
     public static boolean isClientConnected() {
+        if (clientHandshakeComplete) {
+            return true;
+        }
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null) {
             return false;
         }
-        Connection rawConnection = connection.getConnection();
-        if (clientHandshakeConnection == rawConnection) {
-            return true;
-        }
-        return isConnectionValid(rawConnection);
+        return isConnectionValid(connection.getConnection());
     }
 
     public static boolean isConnectionValid(@Nullable Connection connection) {
@@ -90,6 +99,12 @@ public final class NetworkHandler {
     public static void sendToServer(Object obj) {
         if (isClientConnected()) {
             YSMChannel.sendToServer(obj);
+        }
+    }
+
+    public static void sendVersionCheck(Connection connection) {
+        if (connection != null && connection.isConnected()) {
+            connection.send(toServerboundPacket(new C2SVersionCheckPacket()));
         }
     }
 

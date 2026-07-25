@@ -3,9 +3,9 @@
   <h1>YSM-Multiplayer</h1>
   <p>在任意多人服务器上使用本地 YSM 自定义模型</p>
 
-  ![Minecraft](https://img.shields.io/badge/Minecraft-1.21.8-green?style=flat-square)
+  ![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-green?style=flat-square)
   ![Fabric](https://img.shields.io/badge/Loader-Fabric-blue?style=flat-square)
-  ![YSM](https://img.shields.io/badge/YSM-2.6.5.3-orange?style=flat-square)
+  ![YSM](https://img.shields.io/badge/YSM-2.6.6.4-orange?style=flat-square)
 </div>
 
 ---
@@ -14,17 +14,17 @@
 
 标准的 [Yes Steve Model](https://www.curseforge.com/minecraft/mc-mods/yes-steve-model) 要求服务端和客户端安装相同版本的 YSM 才能正常显示自定义模型。连接到没有安装 YSM、版本不兼容、或主动禁用客户端模型的服务器时，模型会被强制还原为原版皮肤。
 
-**YSM-Multiplayer** 是对 OpenYSM 2.6.5.3（Minecraft 1.21.8 Fabric）的客户端补丁，让你在任意服务器上都能使用存放在本地的自定义模型，完全不依赖服务端。
+**YSM-Multiplayer** 是面向 Minecraft 1.21.11 Fabric 的多人适配分支。功能行为以 ModernYSM 2.6.6.4 为上游，Minecraft/Fabric 1.21.11 API 迁移以 OpenYSM-Updated 为基础。
 
 ---
 
 ## 功能
 
 ### 🌐 多人服务器本地模型加载
-进入任意多人服务器时自动加载本地模型，无需服务端安装或配置 YSM。
+连接后会探测服务端 YSM 握手；服务端未安装兼容版本时，超时后自动切换到纯客户端模式并加载本地模型。
 
-### 🔒 抵御服务端禁用指令
-服务端发送 `disabled=true` 数据包时，本地玩家的模型不受影响，始终保持显示。
+### 🔒 强制纯客户端模式
+配置界面可启用 `ForceClientMode`，始终保留本地模型与贴图选择，不接受服务端对本地玩家模型的覆盖。
 
 ### 🔄 子服 / 维度切换无缝保持
 切换子服务器或跨维度传送后，模型不会重置为默认状态，保持玩家设置的模型和贴图。
@@ -71,7 +71,7 @@
 ```bash
 git clone https://github.com/Justice-ocr/YSM-Multiplayer.git
 cd YSM-Multiplayer
-gradle :fabric:build
+./gradlew :fabric:build --no-daemon
 ```
 
 编译产物位于 `fabric/build/libs/`。
@@ -86,5 +86,7 @@ gradle :fabric:build
 
 ## 致谢
 
-- [OpenYSM](https://github.com/OpenYSM/yes_steve_model) — 本项目基于此移植版本修改
+- [ModernYSM](https://github.com/OpenYSMDev/ModernYSM) — 2.6.6.4 功能与多人同步行为的主要上游
+- [OpenYSM-Updated](https://github.com/IzumiiKonata/OpenYSM-Updated) — Minecraft/Fabric 1.21.11 API 迁移基础
+- [Fox-Model-Loader](https://github.com/sdf123098/Fox-Model-Loader) — 同系本地模型加载实现参考
 - [Yes Steve Model](https://www.curseforge.com/minecraft/mc-mods/yes-steve-model) — 原版 mod 作者

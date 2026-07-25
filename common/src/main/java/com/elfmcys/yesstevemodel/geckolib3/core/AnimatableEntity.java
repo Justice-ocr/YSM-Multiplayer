@@ -1,7 +1,6 @@
 package com.elfmcys.yesstevemodel.geckolib3.core;
 
 import com.elfmcys.yesstevemodel.audio.IAudioStreamFactory;
-import com.elfmcys.yesstevemodel.client.animation.PlayerStatePredicates;
 import com.elfmcys.yesstevemodel.client.event.ClientTickEvent;
 import com.elfmcys.yesstevemodel.geckolib3.core.enums.AnimationState;
 import com.elfmcys.yesstevemodel.geckolib3.geo.animated.AnimatedGeoModel;
@@ -22,12 +21,11 @@ import com.elfmcys.yesstevemodel.geckolib3.model.provider.data.EntityModelData;
 import com.elfmcys.yesstevemodel.client.entity.IPreviewAnimatable;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.context.AnimationContext;
 import com.elfmcys.yesstevemodel.geckolib3.core.util.RateLimiter;
-import com.elfmcys.yesstevemodel.geckolib3.util.MovementQuery;
 import com.elfmcys.yesstevemodel.util.log.ILogger;
 import com.google.common.collect.Maps;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceMap;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -60,8 +58,6 @@ public abstract class AnimatableEntity<TEntity extends Entity> {
 
     public float seekTime;
 
-    private boolean wasStationaryLocalPlayerOnGround;
-
     private final AnimationData manager = new AnimationData();
 
     public float lastTick = -1.0f;
@@ -83,7 +79,7 @@ public abstract class AnimatableEntity<TEntity extends Entity> {
     public interface AnimationControllerVisitor extends Consumer<Consumer<IAnimationController<?>>> {
     }
 
-    public abstract ResourceLocation getTextureLocation();
+    public abstract Identifier getTextureLocation();
 
     public abstract boolean isModelReady();
 
@@ -118,7 +114,6 @@ public abstract class AnimatableEntity<TEntity extends Entity> {
         this.needsReset = false;
         this.wasEvaluatedLastFrame = false;
         this.seekTime = 0.0f;
-        this.wasStationaryLocalPlayerOnGround = false;
         this.animationStates.clear();
     }
 
@@ -236,13 +231,6 @@ public abstract class AnimatableEntity<TEntity extends Entity> {
         if (!shouldSit && entity.isAlive() && livingEntity != null) {
             limbSwingAmount = livingEntity.walkAnimation.speed(partialTick);
             limbSwing = livingEntity.walkAnimation.position(partialTick);
-            float measuredGroundSpeed = MovementQuery.getMeasuredGroundSpeed(entity, this.positionTracker);
-            if (isStationaryLocalPlayer(livingEntity) || measuredGroundSpeed <= MovementQuery.EPSILON) {
-                limbSwingAmount = 0.0f;
-            } else if (limbSwingAmount <= MovementQuery.EPSILON) {
-                limbSwingAmount = Mth.clamp(measuredGroundSpeed, 0.0f, 1.0f);
-                limbSwing = this.seekTime * 0.6662f;
-            }
             if (livingEntity.isBaby()) {
                 limbSwing *= 3.0f;
             }
@@ -278,28 +266,12 @@ public abstract class AnimatableEntity<TEntity extends Entity> {
         modelData.netHeadYaw = -Mth.clamp(Mth.wrapDegrees(netHeadYaw), -85.0f, 85.0f);
         modelData.lerpBodyRot = lerpBodyRot;
         modelData.lerpedAge = tickCount + partialTick;
-        AnimationEvent<AnimatableEntity<TEntity>> event = new AnimationEvent<>(this, limbSwing, limbSwingAmount, tickCount, partialTick, frameTime, Math.abs(limbSwingAmount) > 1.0E-4f, z, modelData);
-        updateStationaryLocalPlayerPhysics(livingEntity, event);
+        AnimationEvent<AnimatableEntity<TEntity>> event = new AnimationEvent<>(this, limbSwing, limbSwingAmount, tickCount, partialTick, frameTime, limbSwingAmount <= (-getScale()) || limbSwingAmount <= getScale(), z, modelData);
         AnimationContext<?> context = new AnimationContext<>(entity, this, event, modelData);
         context.setLogger(getLogger());
         setCustomAnimations(context, event);
         return event;
     }
-
-    private boolean isStationaryLocalPlayer(LivingEntity livingEntity) {
-        return PlayerStatePredicates.isStationaryLocalPlayerModel(livingEntity, this);
-    }
-
-    private void updateStationaryLocalPlayerPhysics(@Nullable LivingEntity livingEntity, AnimationEvent<?> event) {
-        boolean stationaryOnGround = livingEntity != null
-                && livingEntity.onGround()
-                && PlayerStatePredicates.isStationaryLocalPlayer(livingEntity, event);
-        if (stationaryOnGround && !this.wasStationaryLocalPlayerOnGround) {
-            this.physicsManager.clear();
-        }
-        this.wasStationaryLocalPlayerOnGround = stationaryOnGround;
-    }
-
 
     public void setCustomAnimations(AnimationContext<?> ctx, @NotNull AnimationEvent<AnimatableEntity<TEntity>> event) {
         float currentTick = event.currentTick;

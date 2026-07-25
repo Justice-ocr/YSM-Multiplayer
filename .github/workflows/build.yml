@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fabric-1.21.11
     tags:
       - "v*"
   pull_request:
@@ -27,13 +28,8 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 9.4.0
-
       - name: Build Fabric mod
-        run: gradle :fabric:build --no-daemon
+        run: ./gradlew :fabric:build --no-daemon
 
       - name: Read mod version
         id: properties

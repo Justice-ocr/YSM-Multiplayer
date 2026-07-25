@@ -1,5 +1,6 @@
 package com.elfmcys.yesstevemodel.geckolib3.core.controller;
 
+import com.elfmcys.yesstevemodel.client.entity.PlayerGeoEntity;
 import com.elfmcys.yesstevemodel.geckolib3.core.keyframe.*;
 import com.elfmcys.yesstevemodel.geckolib3.core.event.SoundKeyFrameExecutor;
 import com.elfmcys.yesstevemodel.geckolib3.core.event.InstructionKeyFrameExecutor;
@@ -146,7 +147,7 @@ public class  AnimationControllerInstance {
             }
         }
         if (this.animationState == AnimationState.RUNNING) {
-            if (adjustedTick >= this.currentAnimation.animationLength) {
+            if (adjustedTick > this.currentAnimation.animationLength) {
                 this.isAnimationFinished = true;
                 if (this.currentAnimationLoop == ILoopType.EDefaultLoopTypes.LOOP) {
                     this.context.executeRenderLayers(evaluator);
@@ -371,24 +372,6 @@ public class  AnimationControllerInstance {
 
     public boolean isAnimationFinished() {
         return this.isAnimationFinished;
-    }
-
-    public boolean hasPassedEnd(float tick) {
-        if (this.currentAnimation == null) {
-            return true;
-        }
-        if (this.currentAnimationLoop == ILoopType.EDefaultLoopTypes.LOOP) {
-            return false;
-        }
-        return adjustTick(tick) >= this.currentAnimation.animationLength;
-    }
-
-    public boolean isLoopingAnimation() {
-        return this.currentAnimationLoop == ILoopType.EDefaultLoopTypes.LOOP;
-    }
-
-    public float getCurrentAnimationLength() {
-        return this.currentAnimation == null ? 0.0f : this.currentAnimation.animationLength;
     }
 
     public void setTransitionInterpolator(IInterpolable interpolable) {

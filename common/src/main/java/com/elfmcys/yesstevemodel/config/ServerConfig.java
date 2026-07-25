@@ -17,12 +17,6 @@ public class ServerConfig {
 
     public static ForgeConfigSpec.BooleanValue CAN_SWITCH_MODEL;
 
-    public static ForgeConfigSpec.BooleanValue CAN_UPLOAD_MODEL;
-
-    public static ForgeConfigSpec.IntValue MAX_UPLOAD_BYTES;
-
-    public static ForgeConfigSpec.IntValue UPLOAD_CHUNKS_PER_TICK;
-
     public static ForgeConfigSpec.ConfigValue<String> DEFAULT_MODEL_ID;
 
     public static ForgeConfigSpec.ConfigValue<String> DEFAULT_MODEL_TEXTURE;
@@ -44,12 +38,6 @@ public class ServerConfig {
         DEFAULT_MODEL_TEXTURE = builder.define("DefaultModelTexture", "default");
         builder.comment("Whether or not players are allowed to switch models");
         CAN_SWITCH_MODEL = builder.define("CanSwitchModel", true);
-        builder.comment("Whether or not players are allowed to upload .ysm models to the server custom folder");
-        CAN_UPLOAD_MODEL = builder.define("CanUploadModel", true);
-        builder.comment("Maximum size for one uploaded model file, in bytes");
-        MAX_UPLOAD_BYTES = builder.defineInRange("MaxUploadBytes", 16 * 1024 * 1024, 1024, 128 * 1024 * 1024);
-        builder.comment("How many model upload chunks a client may send per tick");
-        UPLOAD_CHUNKS_PER_TICK = builder.defineInRange("UploadChunksPerTick", 4, 1, 32);
         builder.comment("Models that are not displayed on the client model selection screen");
         builder.comment("Example: [\"default\", \"misc_3_default_boy\", \"misc_1_alex\", \"misc_2_steve\", \"wine_fox_1_taisho_maid\", \"wine_fox_7_jk\"]");
         CLIENT_NOT_DISPLAY_MODELS = builder.define("ClientNotDisplayModels", Lists.newArrayList());

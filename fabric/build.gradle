@@ -45,8 +45,10 @@ dependencies {
     include "org.ladysnake.cardinal-components-api:cardinal-components-base:$rootProject.cardinal_components_version"
     include "org.ladysnake.cardinal-components-api:cardinal-components-entity:$rootProject.cardinal_components_version"
 
-    implementation "com.github.OpenYSM:ImageStream:-SNAPSHOT"
-    include "com.github.OpenYSM:ImageStream:-SNAPSHOT"
+    implementation "com.github.TartaricAlkaline:ImageStream:-SNAPSHOT"
+    include "com.github.TartaricAlkaline:ImageStream:-SNAPSHOT"
+
+    modCompileOnly "maven.modrinth:iris:1.10.7+1.21.11-fabric"
 
     // Pull common's compile output (named/mojmap) into fabric for both compile and dev-runtime.
     common(project(path: ':common', configuration: 'namedElements')) { transitive = false }

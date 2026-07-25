@@ -1,15 +1,17 @@
 package com.elfmcys.yesstevemodel.client.gui;
 
-import com.elfmcys.yesstevemodel.client.event.AnimationLockEvent;
-import com.elfmcys.yesstevemodel.client.ClientModelManager;
-import com.elfmcys.yesstevemodel.client.gui.custom.ExtraAnimationButtons;
 import com.elfmcys.yesstevemodel.YesSteveModel;
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
-import com.elfmcys.yesstevemodel.resource.models.ModelProperties;
+import com.elfmcys.yesstevemodel.client.event.AnimationLockEvent;
 import com.elfmcys.yesstevemodel.client.gui.button.AnimationSlider;
 import com.elfmcys.yesstevemodel.client.gui.button.ConfigCheckBox;
 import com.elfmcys.yesstevemodel.client.gui.button.FlatColorButton;
 import com.elfmcys.yesstevemodel.client.gui.button.FlatIconButton;
+import com.elfmcys.yesstevemodel.client.gui.custom.AbstractConfig;
+import com.elfmcys.yesstevemodel.client.gui.custom.ExtraAnimationButtons;
+import com.elfmcys.yesstevemodel.client.gui.custom.configs.CheckboxConfig;
+import com.elfmcys.yesstevemodel.client.gui.custom.configs.RadioConfig;
+import com.elfmcys.yesstevemodel.client.gui.custom.configs.RangeConfig;
 import com.elfmcys.yesstevemodel.client.input.AnimationRouletteKey;
 import com.elfmcys.yesstevemodel.client.input.ExtraAnimationKey;
 import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
@@ -18,21 +20,15 @@ import com.elfmcys.yesstevemodel.config.ServerConfig;
 import com.elfmcys.yesstevemodel.geckolib3.core.AnimatableEntity;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import com.elfmcys.yesstevemodel.geckolib3.resource.GeckoLibCache;
-import com.elfmcys.yesstevemodel.client.gui.custom.AbstractConfig;
-import com.elfmcys.yesstevemodel.client.gui.custom.configs.CheckboxConfig;
-import com.elfmcys.yesstevemodel.client.gui.custom.configs.RadioConfig;
-import com.elfmcys.yesstevemodel.client.gui.custom.configs.RangeConfig;
 import com.elfmcys.yesstevemodel.mixin.client.ScreenAccessor;
 import com.elfmcys.yesstevemodel.molang.parser.ParseException;
-import rip.ysm.api.client.KeyMappingFactory;
 import com.elfmcys.yesstevemodel.network.NetworkHandler;
 import com.elfmcys.yesstevemodel.network.message.C2SPlayAnimationPacket;
 import com.elfmcys.yesstevemodel.network.message.C2SRequestExecuteMolangPacket;
+import com.elfmcys.yesstevemodel.resource.models.ModelProperties;
 import com.elfmcys.yesstevemodel.util.data.OrderedStringMap;
 import com.google.common.collect.Lists;
 import com.mojang.blaze3d.platform.InputConstants;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -41,8 +37,9 @@ import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -58,22 +55,12 @@ import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
-
+import rip.ysm.api.client.KeyMappingFactory;
 
 import java.util.*;
 import java.util.function.Consumer;
 
 public class AnimationRouletteScreen extends Screen {
-    private static final int PANEL_BG = 0xAA14171A;
-    private static final int PANEL_SOFT = 0xAA20252A;
-    private static final int ACCENT = 0xFF5CC8A7;
-    private static final int TEXT = 0xFFF3F0E0;
-    private static final int MUTED = 0xFF9DA6AA;
-    private static final int RADIAL_NORMAL = 0xAA20252A;
-    private static final int RADIAL_HOVER = 0xCC2F6E62;
-    private static final int RADIAL_CONFIG = 0x99425B67;
-    private static final int RADIAL_CONFIG_HOVER = 0xCC5CC8A7;
 
     private static final String SUBMENU_PREFIX = "#";
 
@@ -84,8 +71,6 @@ public class AnimationRouletteScreen extends Screen {
     private static final String CONFIG_DESC_FORMAT = "properties.extra_animation_buttons.%s.config_forms.%d.description";
 
     private static final String CONFIG_LABEL_FORMAT = "properties.extra_animation_buttons.%s.config_forms.%d.labels.%d";
-
-    private static final int ITEMS_PER_PAGE = 8;
 
     private static final LinkedList<Pair<String, Integer>> navigationStack = Lists.newLinkedList();
 
@@ -351,9 +336,9 @@ public class AnimationRouletteScreen extends Screen {
             }
         }) {
             @Override
-            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            public void renderContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
                 guiGraphics.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), -280804798);
-                super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
+                super.renderContents(guiGraphics, mouseX, mouseY, partialTick);
             }
         };
         configCheckBox.setStateTriggered(parsedValue > 0.0f);
@@ -377,10 +362,9 @@ public class AnimationRouletteScreen extends Screen {
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int scrolledMouseY;
-        renderModernFrame(guiGraphics);
         guiGraphics.drawCenteredString(this.font, Component.translatable("gui.yes_steve_model.roulette.path", StringUtils.joinWith(" > ", navigationStack.stream().map((v0) -> {
             return v0.getLeft();
-        }).toArray())), this.centerX + 195, this.centerY - 100, TEXT);
+        }).toArray())), this.centerX + 195, this.centerY - 100, -1);
         renderRadialBackground(guiGraphics, mouseX, mouseY);
         renderRadialButtons(guiGraphics);
         renderPageInfo(guiGraphics);
@@ -407,11 +391,6 @@ public class AnimationRouletteScreen extends Screen {
         renderHoverTooltip(guiGraphics, mouseX, scrolledMouseY);
     }
 
-    @Override
-    protected void renderBlurredBackground(GuiGraphics guiGraphics) {
-
-    }
-
     private void renderHoverTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (-1 < this.hoveredIndex && this.hoveredIndex < this.currentProperties.size()) {
             String str = ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s.desc".formatted(this.currentProperties.getKeyAt(this.hoveredIndex)), StringPool.EMPTY);
@@ -419,15 +398,6 @@ public class AnimationRouletteScreen extends Screen {
                 guiGraphics.setTooltipForNextFrame(this.font, this.font.split(Component.literal(str), 240), mouseX, mouseY);
             }
         }
-    }
-
-    private void renderModernFrame(GuiGraphics guiGraphics) {
-        guiGraphics.fill(this.centerX - 118, this.centerY - 118, this.centerX + 116, this.centerY + 118, PANEL_BG);
-        guiGraphics.fill(this.centerX + 120, this.centerY - 118, this.centerX + 278, this.centerY + 118, PANEL_BG);
-        guiGraphics.fill(this.centerX + 120, this.centerY - 118, this.centerX + 278, this.centerY - 116, ACCENT);
-        guiGraphics.fill(this.centerX + 124, this.centerY - 50, this.centerX + 238, this.centerY + 112, PANEL_SOFT);
-        guiGraphics.drawString(this.font, "Roulette", this.centerX - 108, this.centerY - 112, TEXT, false);
-        guiGraphics.drawString(this.font, "Config", this.centerX + 128, this.centerY - 112, MUTED, false);
     }
 
     private void executeExpression(String str, @Nullable Consumer<String> consumer) {
@@ -439,8 +409,8 @@ public class AnimationRouletteScreen extends Screen {
     }
 
     private void renderPageInfo(GuiGraphics guiGraphics) {
-        guiGraphics.fill(this.centerX + 157, this.centerY - 87, this.centerX + 238, this.centerY - 72, PANEL_SOFT);
-        guiGraphics.drawCenteredString(this.font, String.format("%d/%d", Integer.valueOf(this.currentNavEntry.getRight().intValue() + 1), Integer.valueOf(((this.currentProperties.size() - 1) / 8) + 1)), this.centerX + 197, this.centerY - 83, ACCENT);
+        guiGraphics.fill(this.centerX + 157, this.centerY - 87, this.centerX + 238, this.centerY - 72, -822083584);
+        guiGraphics.drawCenteredString(this.font, String.format("%d/%d", Integer.valueOf(this.currentNavEntry.getRight().intValue() + 1), Integer.valueOf(((this.currentProperties.size() - 1) / 8) + 1)), this.centerX + 197, this.centerY - 83, ChatFormatting.AQUA.getColor().intValue() | 0xFF000000);
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
@@ -481,7 +451,8 @@ public class AnimationRouletteScreen extends Screen {
         this.configScrollOffset = Math.min(this.maxConfigScroll, this.configScrollOffset + i);
     }
 
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int button = event.button();
         if (-1 < this.hoveredIndex && this.hoveredIndex < this.currentProperties.size()) {
             Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
             String str = this.currentProperties.getKeyAt(this.hoveredIndex);
@@ -498,16 +469,20 @@ public class AnimationRouletteScreen extends Screen {
             if (str2.startsWith(SUBMENU_PREFIX)) {
                 String strSubstring = str2.substring(SUBMENU_PREFIX.length());
                 if (this.renderGroups.containsKey(strSubstring)) {
-                    showConfigGroup(strSubstring);
+                    if (GeneralConfig.ROULETTE_SETTINGS_MODE.get() == GeneralConfig.RouletteSettingsMode.CLASSIC) {
+                        showConfigGroup(strSubstring);
+                    } else {
+                        Minecraft.getInstance().setScreen(new rip.ysm.gui.ModelSettingsScreen(this.renderContext, this.animatableModel, this, strSubstring));
+                    }
                 }
             }
         }
         for (GuiEventListener guiEventListener : children()) {
-            double scrolledMouseY = mouseY;
+            MouseButtonEvent scrolledEvent = event;
             if (guiEventListener instanceof ISpecialWidget) {
-                scrolledMouseY = mouseY + this.configScrollOffset;
+                scrolledEvent = new MouseButtonEvent(event.x(), event.y() + this.configScrollOffset, event.buttonInfo());
             }
-            if (guiEventListener.mouseClicked(mouseX, scrolledMouseY, button)) {
+            if (guiEventListener.mouseClicked(scrolledEvent, doubleClick)) {
                 setFocused(guiEventListener);
                 if (button == 0) {
                     setDragging(true);
@@ -519,12 +494,12 @@ public class AnimationRouletteScreen extends Screen {
         return false;
     }
 
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (KeyMappingFactory.isActiveAndMatches(AnimationRouletteKey.KEY_ROULETTE, keyCode, scanCode)) {
+    public boolean keyPressed(KeyEvent event) {
+        if (KeyMappingFactory.isActiveAndMatches(AnimationRouletteKey.KEY_ROULETTE, event)) {
             onClose();
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(event);
     }
 
     private void showConfigGroup(String str) {
@@ -536,18 +511,18 @@ public class AnimationRouletteScreen extends Screen {
 
     private void playAnimation(String str) {
         LocalPlayer localPlayer = Minecraft.getInstance().player;
-        Entity entity = this.animatableModel.getEntity();
-        if (entity instanceof Player) {
-            if (localPlayer != null) {
-                PlayerCapability.get(localPlayer).ifPresent(cap -> {
-                    cap.requestModelSwitch(str);
-                    if (NetworkHandler.isClientConnected() && ClientModelManager.isServerModel(cap.getModelId())) {
-                        NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, getCurrentCategory()));
-                    }
-                });
+        if (NetworkHandler.isClientConnected()) {
+            Pair<String, Integer> pairPeekLast = navigationStack.peekLast();
+            String str2 = StringPool.EMPTY;
+            if (pairPeekLast != null && StringUtils.isNotBlank(pairPeekLast.getLeft())) {
+                str2 = pairPeekLast.getLeft();
             }
-        } else if (NetworkHandler.isClientConnected()) {
-            NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, getCurrentCategory(), entity.getId()));
+            Entity entity = this.animatableModel.getEntity();
+            if (entity instanceof Player) {
+                NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, str2));
+            } else {
+                NetworkHandler.sendToServer(new C2SPlayAnimationPacket(this.hoveredIndex, str2, entity.getId()));
+            }
         } else if (localPlayer != null) {
             PlayerCapability.get(localPlayer).ifPresent(cap -> {
                 cap.requestModelSwitch(str);
@@ -557,14 +532,6 @@ public class AnimationRouletteScreen extends Screen {
             localPlayer.displayClientMessage(Component.translatable("message.yes_steve_model.model.animation_roulette.play", str), false);
         }
         Minecraft.getInstance().setScreen(null);
-    }
-
-    private String getCurrentCategory() {
-        Pair<String, Integer> pairPeekLast = navigationStack.peekLast();
-        if (pairPeekLast != null && StringUtils.isNotBlank(pairPeekLast.getLeft())) {
-            return pairPeekLast.getLeft();
-        }
-        return StringPool.EMPTY;
     }
 
     private void navigateToSubmenu(String str) {
@@ -626,7 +593,7 @@ public class AnimationRouletteScreen extends Screen {
             if (StringUtils.isNoneBlank(str)) {
                 renderWrappedLabel(guiGraphics, Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s".formatted(this.currentProperties.getKeyAt(iIntValue)), str)), iCos, labelY, zStartsWith);
             } else {
-                guiGraphics.drawCenteredString(this.font, Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s".formatted(this.currentProperties.getKeyAt(iIntValue)), String.valueOf(iIntValue))), iCos, labelY - 8, TEXT);
+                guiGraphics.drawCenteredString(this.font, Component.literal(ModelMetadataPresenter.getLocalizedModelString(this.renderContext, "properties.extra_animation.%s".formatted(this.currentProperties.getKeyAt(iIntValue)), String.valueOf(iIntValue))), iCos, labelY - 8, 0xFFF3F0E0);
             }
             if (this.currentNavEntry.getRight().intValue() == 0 && navigationStack.size() == 1) {
                 renderKeyBindings(guiGraphics, iIntValue, iCos, labelY);
@@ -644,7 +611,7 @@ public class AnimationRouletteScreen extends Screen {
             mutableComponentWithStyle.append(keyMapping.getTranslatedKeyMessage());
         }
         mutableComponentWithStyle.append(" ]");
-        guiGraphics.drawCenteredString(this.font, mutableComponentWithStyle, x, y + 4, TEXT);
+        guiGraphics.drawCenteredString(this.font, mutableComponentWithStyle, x, y + 4, 0xFFF3F0E0);
     }
 
     private void renderWrappedLabel(GuiGraphics guiGraphics, MutableComponent mutableComponent, int x, int y, boolean isSubmenu) {
@@ -659,19 +626,10 @@ public class AnimationRouletteScreen extends Screen {
         }
         Iterator it = listSplit.iterator();
         while (it.hasNext()) {
-            guiGraphics.drawCenteredString(this.font, (FormattedCharSequence) it.next(), x, lineY, TEXT);
+            guiGraphics.drawCenteredString(this.font, (FormattedCharSequence) it.next(), x, lineY, 0xFFF3F0E0);
             lineY += 9;
         }
     }
-
-    /**
-     * 1.21.6+ port: the legacy BufferUploader/Tesselator immediate-mode path is gone — there is no
-     * public way to submit arbitrary triangle geometry to the GUI render state without a mixin
-     * accessor. We tessellate each pie slice into K rotated thin rectangles drawn via
-     * {@code guiGraphics.fill}, using {@code pose().rotate()} so each segment lines up along the
-     * radial direction. The intra-slice angular padding (~2°) from the original code is preserved.
-     */
-    private static final int RADIAL_SUB_SEGMENTS = 24;
 
     private void renderRadialBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (this.currentProperties.isEmpty()) {
@@ -694,11 +652,11 @@ public class AnimationRouletteScreen extends Screen {
             boolean isConfigSliceHovered = startAngle < pointerAngle && pointerAngle < endAngle && 20.0f < pointerRadius && pointerRadius < 50.0f;
             if (isSubmenu) {
                 if (isConfigSliceHovered) {
-                    drawRadialSegment(guiGraphics, 15.0f, 50.0f, startAngle, endAngle, RADIAL_CONFIG_HOVER);
+                    drawRadialSegment(guiGraphics, 15.0f, 50.0f, startAngle, endAngle, -268382465);
                     hoveredConfig = true;
                     this.hoveredConfigIndex = iIntValue;
                 } else {
-                    drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, RADIAL_CONFIG);
+                    drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, 1879101183);
                 }
             }
         }
@@ -718,37 +676,39 @@ public class AnimationRouletteScreen extends Screen {
         }
         if (isHovered && index < this.currentProperties.size()) {
             if (isSubmenu) {
-                drawRadialSegment(guiGraphics, 50.0f, 115.0f, startAngle, endAngle, RADIAL_HOVER);
-                drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, RADIAL_CONFIG);
+                drawRadialSegment(guiGraphics, 50.0f, 115.0f, startAngle, endAngle, -251678464);
+                drawRadialSegment(guiGraphics, 25.0f, 50.0f, startAngle, endAngle, -1879048192);
             } else {
-                drawRadialSegment(guiGraphics, 25.0f, 115.0f, startAngle, endAngle, RADIAL_HOVER);
+                drawRadialSegment(guiGraphics, 25.0f, 115.0f, startAngle, endAngle, -251678464);
             }
         } else {
-            drawRadialSegment(guiGraphics, 25.0f, 105.0f, startAngle, endAngle, RADIAL_NORMAL);
+            drawRadialSegment(guiGraphics, 25.0f, 105.0f, startAngle, endAngle, -1879048192);
         }
         return alreadyHovered;
     }
 
     private void drawRadialSegment(GuiGraphics guiGraphics, float innerRadius, float outerRadius, float startAngle, float endAngle, int color) {
-        // Subdivide the slice angularly into thin sub-segments; each one becomes a rotated
-        // axis-aligned rectangle running radially from innerRadius..outerRadius. Sizing the
-        // tangential half-width by outerRadius (with a tiny safety scale) over-covers the inner
-        // edge so adjacent sub-segments overlap there, eliminating visible radial gaps.
-        org.joml.Matrix3x2fStack pose = guiGraphics.pose();
-        float dA = (endAngle - startAngle) / (float) RADIAL_SUB_SEGMENTS;
-        float halfWidth = outerRadius * (float) Math.sin(dA / 2.0) * 1.05f;
-        int yLow = -(int) Math.ceil(halfWidth);
-        int yHigh = (int) Math.ceil(halfWidth);
-        int xLow = Math.round(innerRadius);
-        int xHigh = Math.round(outerRadius);
-        for (int k = 0; k < RADIAL_SUB_SEGMENTS; k++) {
-            float midA = startAngle + (k + 0.5f) * dA;
-            pose.pushMatrix();
-            pose.translate(this.centerX, this.centerY);
-            pose.rotate(midA);
-            guiGraphics.fill(xLow, yLow, xHigh, yHigh, color);
-            pose.popMatrix();
-        }
+        float startCos = Mth.cos(startAngle);
+        float startSin = Mth.sin(startAngle);
+        float endCos = Mth.cos(endAngle);
+        float endSin = Mth.sin(endAngle);
+        float outerStartX = this.centerX + outerRadius * startCos;
+        float outerStartY = this.centerY + outerRadius * startSin;
+        float innerStartX = this.centerX + innerRadius * startCos;
+        float innerStartY = this.centerY + innerRadius * startSin;
+        float innerEndX = this.centerX + innerRadius * endCos;
+        float innerEndY = this.centerY + innerRadius * endSin;
+        float outerEndX = this.centerX + outerRadius * endCos;
+        float outerEndY = this.centerY + outerRadius * endSin;
+        guiGraphics.guiRenderState.submitGuiElement(RadialSliceRenderState.of(
+                guiGraphics.pose(),
+                outerStartX, outerStartY,
+                innerStartX, innerStartY,
+                innerEndX, innerEndY,
+                outerEndX, outerEndY,
+                color,
+                null
+        ));
     }
 
 }

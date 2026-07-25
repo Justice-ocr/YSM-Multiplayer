@@ -142,7 +142,7 @@
 				"texture": {
 					"uv": "textures/boat.png"
 				},
-				"match": ["minecraft:boat"]
+				"match": ["#minecraft:boat"]
 			}
 		]
 	}

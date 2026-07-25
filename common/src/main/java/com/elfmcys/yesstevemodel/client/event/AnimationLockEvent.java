@@ -21,8 +21,8 @@ public class AnimationLockEvent {
     }
 
     public static void register() {
-        ClientRawInputEvent.KEY_PRESSED.register((client, keyCode, scanCode, action, modifiers) -> {
-            if (YesSteveModel.isAvailable() && action == 1 && AnimationRouletteKey.KEY_LOCK.matches(keyCode, scanCode)) {
+        ClientRawInputEvent.KEY_PRESSED.register((client, action, event) -> {
+            if (YesSteveModel.isAvailable() && action == 1 && AnimationRouletteKey.KEY_LOCK.matches(event)) {
                 animationLocked = !animationLocked;
             }
             return EventResult.pass();

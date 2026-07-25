@@ -1,13 +1,8 @@
 package com.elfmcys.yesstevemodel.geckolib3.geo.render.built;
 
-import com.elfmcys.yesstevemodel.YesSteveModel;
-import com.elfmcys.yesstevemodel.config.GeneralConfig;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
-import com.elfmcys.yesstevemodel.geckolib3.geo.NativeGpuGlMeshCache;
-import com.elfmcys.yesstevemodel.geckolib3.geo.NativeGpuMeshCache;
 import com.elfmcys.yesstevemodel.geckolib3.geo.animated.AnimatedGeoModel;
 import com.elfmcys.yesstevemodel.resource.models.GeometryDescription;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntLists;
@@ -16,17 +11,16 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import rip.ysm.gpu.GpuRenderPath;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.*;
+import java.util.List;
 
 /**
  * Bedrock的.geo模型文件
  */
 public class GeoModel {
-    private static boolean nativeInitFailureLogged;
-    private static boolean nativeGpuMeshFailureLogged;
 
     @NotNull
     public final List<GeoBone> bones;
@@ -94,14 +88,11 @@ public class GeoModel {
 
     public List<BakedBone> bakedBones;
 
-    private FlattenedRenderData flattenedRenderData;
-
     public static class BakedBone {
         public String name;
         public boolean glow;
         public int parentIdx = -1;
         public float pivotX, pivotY, pivotZ;
-        public float pivotX16, pivotY16, pivotZ16;
         public float rotX, rotY, rotZ;
         public List<BakedCube> cubes = new ObjectArrayList<>();
         public int partMask;
@@ -120,82 +111,15 @@ public class GeoModel {
         public Vector3f normal;
     }
 
-    public static class FlattenedRenderData {
-        public final List<BakedBone> source;
-        public final BakedBone[] sourceArray;
-        public final FlattenedBone[] bones;
-        private final int[][] renderBoneIndicesByMask;
-        private final int[][] computeBoneIndicesByMask;
-
-        private FlattenedRenderData(List<BakedBone> source, BakedBone[] sourceArray, FlattenedBone[] bones, int[][] renderBoneIndicesByMask, int[][] computeBoneIndicesByMask) {
-            this.source = source;
-            this.sourceArray = sourceArray;
-            this.bones = bones;
-            this.renderBoneIndicesByMask = renderBoneIndicesByMask;
-            this.computeBoneIndicesByMask = computeBoneIndicesByMask;
-        }
-
-        public int[] getRenderBoneIndices(int renderPartMask) {
-            if (0 <= renderPartMask && renderPartMask < this.renderBoneIndicesByMask.length) {
-                return this.renderBoneIndicesByMask[renderPartMask];
-            }
-            return this.renderBoneIndicesByMask[0];
-        }
-
-        public int[] getComputeBoneIndices(int renderPartMask) {
-            if (0 <= renderPartMask && renderPartMask < this.computeBoneIndicesByMask.length) {
-                return this.computeBoneIndicesByMask[renderPartMask];
-            }
-            return this.computeBoneIndicesByMask[0];
-        }
-    }
-
-    public static class FlattenedBone {
-        public boolean glow;
-        public int partMask;
-        public boolean hasCullable;
-        public int quadCount;
-        public int normalCount;
-        public boolean[] cullable;
-        public int[] normalIndices;
-        public float[] positions;
-        public float[] uvs;
-        public float[] uniqueNormals;
-    }
-
 //    static {
 //        System.load("test.dll");
 //    }
 
     public long nativeModelHandle = 0;
 
-    public long nativeGpuMeshHandle = 0;
-
-    public final int[] nativeGpuMeshMetadata = new int[9];
-
-    public NativeGpuMeshCache nativeGpuMeshCache;
-
-    public NativeGpuGlMeshCache nativeGpuGlMeshCache;
-
-    public boolean nativeGpuGlUploadAttempted;
-
-    private boolean nativeCacheAttempted;
-
-    private boolean nativeGpuMeshAttempted;
-
-    private boolean nativeGpuUploadAttempted;
+    public long gpuMeshHandle = 0;
 
     public static native long nInitModelCache(ByteBuffer buffer);
-
-    public static native long nBuildGpuMesh(ByteBuffer buffer, int[] metadata);
-
-    public static native ByteBuffer nGetGpuMeshVertexBuffer(long handle);
-
-    public static native ByteBuffer nGetGpuMeshIndexBuffer(long handle);
-
-    public static native void nReleaseGpuMeshScratch(long handle);
-
-    public static native void nFreeGpuMesh(long handle);
 
     public static native void nDestroyModelCache(long handle);
 
@@ -205,65 +129,23 @@ public class GeoModel {
             int renderPartMask, int packedLight, int packedOverlay,
             float r, float g, float b, float a);
 
-    public static native void nComputeBoneMatrices(
-            long handle, float[] matrixTransfer, float[] animTransfer, float[] output,
-            int renderPartMask, ByteBuffer scratch);
+    public static native long nBuildGpuMesh(ByteBuffer buffer, int[] outMeta);
 
-    public static native void nComputeBoneMatricesLocal(
-            long handle, float[] animTransfer, int renderPartMask, ByteBuffer scratch);
+    public static native ByteBuffer nGetGpuMeshVertexBuffer(long pointer);
+
+    public static native ByteBuffer nGetGpuMeshIndexBuffer(long pointer);
+
+    public static native void nReleaseGpuMeshScratch(long pointer);
+
+    public static native void nFreeGpuMesh(long pointer);
+
+    public static native void nComputeBoneMatrices(long pointer, float[] rootPose, float[] rootNormal, float[] anim, int packedLight, ByteBuffer outBoneBuffer);
+
+    public static native void nComputeBoneMatricesLocal(long handle, float[] animArray, int packedLight, ByteBuffer outBoneBuffer);
 
     public void buildNativeCache() {
         if (bakedBones == null || bakedBones.isEmpty()) return;
-        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return;
-        if (nativeCacheAttempted || nativeModelHandle != 0) return;
-        nativeCacheAttempted = true;
 
-        ByteBuffer buffer = buildNativeMeshBuffer();
-        if (buffer == null) return;
-
-        try {
-            this.nativeModelHandle = nInitModelCache(buffer);
-        } catch (Throwable throwable) {
-            if (!nativeInitFailureLogged) {
-                nativeInitFailureLogged = true;
-                YesSteveModel.LOGGER.warn("[YSM Render] Native model cache is unavailable; falling back to Java renderer", throwable);
-            }
-            this.nativeModelHandle = 0;
-        }
-    }
-
-    public void buildNativeGpuMesh() {
-        if (bakedBones == null || bakedBones.isEmpty()) return;
-        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return;
-        if (nativeGpuMeshAttempted || nativeGpuMeshHandle != 0) return;
-        nativeGpuMeshAttempted = true;
-
-        ByteBuffer buffer = buildNativeMeshBuffer();
-        if (buffer == null) return;
-
-        try {
-            Arrays.fill(this.nativeGpuMeshMetadata, 0);
-            this.nativeGpuMeshHandle = nBuildGpuMesh(buffer, this.nativeGpuMeshMetadata);
-        } catch (Throwable throwable) {
-            if (!nativeGpuMeshFailureLogged) {
-                nativeGpuMeshFailureLogged = true;
-                YesSteveModel.LOGGER.warn("[YSM Render] Native GPU mesh cache is unavailable; falling back to Java bone matrices", throwable);
-            }
-            this.nativeGpuMeshHandle = 0;
-        }
-    }
-
-    public NativeGpuMeshCache getOrUploadNativeGpuMesh() {
-        if (nativeGpuMeshCache != null) return nativeGpuMeshCache;
-        if (nativeGpuUploadAttempted) return null;
-        if (bakedBones == null || bakedBones.isEmpty()) return null;
-        if (!Boolean.TRUE.equals(GeneralConfig.USE_NATIVE_RENDERER.get())) return null;
-        nativeGpuUploadAttempted = true;
-        nativeGpuMeshCache = NativeGpuMeshCache.upload(this);
-        return nativeGpuMeshCache;
-    }
-
-    private ByteBuffer buildNativeMeshBuffer() {
         int totalBones = bakedBones.size();
         int totalCubes = 0;
         int totalQuads = 0;
@@ -310,169 +192,17 @@ public class GeoModel {
         }
 
         buffer.position(0);
-        return buffer;
+        this.nativeModelHandle = nInitModelCache(buffer);
     }
 
     public void freeNativeCache() {
-        if (nativeGpuMeshCache != null) {
-            nativeGpuMeshCache.close();
-            nativeGpuMeshCache = null;
-        }
-        if (nativeGpuGlMeshCache != null) {
-            nativeGpuGlMeshCache.close();
-            nativeGpuGlMeshCache = null;
-        }
         if (nativeModelHandle != 0) {
             nDestroyModelCache(nativeModelHandle);
             nativeModelHandle = 0;
         }
-        if (nativeGpuMeshHandle != 0) {
-            nFreeGpuMesh(nativeGpuMeshHandle);
-            nativeGpuMeshHandle = 0;
+        if (gpuMeshHandle != 0) {
+            GpuRenderPath.disposeMesh(this);
         }
-        nativeCacheAttempted = false;
-        nativeGpuMeshAttempted = false;
-        nativeGpuUploadAttempted = false;
-        nativeGpuGlUploadAttempted = false;
-    }
-
-    public FlattenedRenderData getFlattenedRenderData() {
-        if (bakedBones == null || bakedBones.isEmpty()) return null;
-        if (flattenedRenderData == null || flattenedRenderData.source != bakedBones || flattenedRenderData.bones.length != bakedBones.size()) {
-            flattenedRenderData = buildFlattenedRenderData();
-        }
-        return flattenedRenderData;
-    }
-
-    private FlattenedRenderData buildFlattenedRenderData() {
-        FlattenedBone[] flattenedBones = new FlattenedBone[bakedBones.size()];
-        int[][] renderBoneIndexBuffers = new int[4][bakedBones.size()];
-        int[] renderBoneIndexCounts = new int[4];
-        for (int i = 0; i < bakedBones.size(); i++) {
-            BakedBone sourceBone = bakedBones.get(i);
-            FlattenedBone flattenedBone = new FlattenedBone();
-            flattenedBone.glow = sourceBone.glow;
-            flattenedBone.partMask = sourceBone.partMask;
-
-            int quadCount = 0;
-            for (BakedCube cube : sourceBone.cubes) {
-                quadCount += cube.quads.size();
-            }
-
-            flattenedBone.quadCount = quadCount;
-            flattenedBone.cullable = new boolean[quadCount];
-            flattenedBone.normalIndices = new int[quadCount];
-            flattenedBone.positions = new float[quadCount * 12];
-            flattenedBone.uvs = new float[quadCount * 8];
-            float[] uniqueNormals = new float[quadCount * 3];
-            int uniqueNormalCount = 0;
-
-            int quadIndex = 0;
-            for (BakedCube cube : sourceBone.cubes) {
-                for (BakedQuad quad : cube.quads) {
-                    flattenedBone.cullable[quadIndex] = cube.cullable;
-                    if (cube.cullable) {
-                        flattenedBone.hasCullable = true;
-                    }
-
-                    int positionOffset = quadIndex * 12;
-                    for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-                        Vector3f position = quad.positions[vertexIndex];
-                        int offset = positionOffset + vertexIndex * 3;
-                        flattenedBone.positions[offset] = position.x();
-                        flattenedBone.positions[offset + 1] = position.y();
-                        flattenedBone.positions[offset + 2] = position.z();
-                    }
-
-                    int uvOffset = quadIndex * 8;
-                    for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-                        Vector2f uv = quad.uvs[vertexIndex];
-                        int offset = uvOffset + vertexIndex * 2;
-                        flattenedBone.uvs[offset] = uv.x();
-                        flattenedBone.uvs[offset + 1] = uv.y();
-                    }
-
-                    int normalIndex = findOrAddNormal(uniqueNormals, uniqueNormalCount, quad.normal);
-                    if (normalIndex == uniqueNormalCount) {
-                        uniqueNormalCount++;
-                    }
-                    flattenedBone.normalIndices[quadIndex] = normalIndex;
-
-                    quadIndex++;
-                }
-            }
-            flattenedBone.normalCount = uniqueNormalCount;
-            flattenedBone.uniqueNormals = Arrays.copyOf(uniqueNormals, uniqueNormalCount * 3);
-            flattenedBones[i] = flattenedBone;
-            if (quadCount > 0) {
-                addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 0, i);
-                if (sourceBone.partMask == 1 || sourceBone.partMask == 3) {
-                    addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 1, i);
-                }
-                if (sourceBone.partMask == 2 || sourceBone.partMask == 3) {
-                    addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 2, i);
-                }
-                if (sourceBone.partMask == 3) {
-                    addRenderBoneIndex(renderBoneIndexBuffers, renderBoneIndexCounts, 3, i);
-                }
-            }
-        }
-        int[][] renderBoneIndicesByMask = new int[renderBoneIndexBuffers.length][];
-        int[][] computeBoneIndicesByMask = new int[renderBoneIndexBuffers.length][];
-        BakedBone[] sourceArray = bakedBones.toArray(new BakedBone[0]);
-        for (BakedBone bone : sourceArray) {
-            bone.pivotX16 = bone.pivotX * 0.0625f;
-            bone.pivotY16 = bone.pivotY * 0.0625f;
-            bone.pivotZ16 = bone.pivotZ * 0.0625f;
-        }
-        for (int mask = 0; mask < renderBoneIndexBuffers.length; mask++) {
-            renderBoneIndicesByMask[mask] = Arrays.copyOf(renderBoneIndexBuffers[mask], renderBoneIndexCounts[mask]);
-            computeBoneIndicesByMask[mask] = buildComputeBoneIndices(sourceArray, renderBoneIndicesByMask[mask]);
-        }
-        return new FlattenedRenderData(bakedBones, sourceArray, flattenedBones, renderBoneIndicesByMask, computeBoneIndicesByMask);
-    }
-
-    private static void addRenderBoneIndex(int[][] buffers, int[] counts, int mask, int boneIndex) {
-        buffers[mask][counts[mask]++] = boneIndex;
-    }
-
-    private static int[] buildComputeBoneIndices(BakedBone[] bones, int[] renderBoneIndices) {
-        boolean[] added = new boolean[bones.length];
-        int[] indices = new int[bones.length];
-        int count = 0;
-        for (int renderBoneIndex : renderBoneIndices) {
-            count = addBoneWithParents(bones, renderBoneIndex, added, indices, count);
-        }
-        return Arrays.copyOf(indices, count);
-    }
-
-    private static int addBoneWithParents(BakedBone[] bones, int boneIndex, boolean[] added, int[] indices, int count) {
-        if (boneIndex == -1 || added[boneIndex]) {
-            return count;
-        }
-        count = addBoneWithParents(bones, bones[boneIndex].parentIdx, added, indices, count);
-        added[boneIndex] = true;
-        indices[count++] = boneIndex;
-        return count;
-    }
-
-    private static int findOrAddNormal(float[] uniqueNormals, int normalCount, Vector3f normal) {
-        int normalX = Float.floatToIntBits(normal.x());
-        int normalY = Float.floatToIntBits(normal.y());
-        int normalZ = Float.floatToIntBits(normal.z());
-        for (int i = 0; i < normalCount; i++) {
-            int offset = i * 3;
-            if (Float.floatToIntBits(uniqueNormals[offset]) == normalX
-                    && Float.floatToIntBits(uniqueNormals[offset + 1]) == normalY
-                    && Float.floatToIntBits(uniqueNormals[offset + 2]) == normalZ) {
-                return i;
-            }
-        }
-        int offset = normalCount * 3;
-        uniqueNormals[offset] = normal.x();
-        uniqueNormals[offset + 1] = normal.y();
-        uniqueNormals[offset + 2] = normal.z();
-        return normalCount;
     }
 
     public GeoModel(GeoBone[] geoBones, String[][] strArr, boolean[] zArr, @NotNull GeometryDescription properties, boolean[] zArr2) {

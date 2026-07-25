@@ -1,29 +1,34 @@
 package com.elfmcys.yesstevemodel.resource;
 
 import com.elfmcys.yesstevemodel.resource.pojo.RawYsmModel;
-import com.google.gson.*;
-import org.apache.commons.codec.digest.DigestUtils;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-
 import rip.ysm.imagestream.avif.AvifDecoder;
-import rip.ysm.imagestream.jpeg.JpegDecoder;
 import rip.ysm.imagestream.webp.WebpDecoder;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Stream;
-import javax.imageio.ImageIO;
+
+import static com.elfmcys.yesstevemodel.util.DigestUtil.md5Hex;
+import static com.elfmcys.yesstevemodel.util.DigestUtil.sha256Hex;
 
 public class YSMFolderDeserializer implements AutoCloseable {
     private final Map<String, String> readFilesMd5Map = new TreeMap<>();
@@ -45,23 +50,8 @@ public class YSMFolderDeserializer implements AutoCloseable {
             this.rootPath = sourcePath;
             this.zipFileSystem = null;
         } else if (sourcePath.toString().endsWith(".zip") || sourcePath.toString().endsWith(".ysm")) {
-            // 用 URI + env 方式打开，对中文文件名需要先将路径转为 URI 再构造 jar: URI
-            // 由于 .ysm 不被 Java FileSystem provider 识别，统一转换为流读取后用内存 FileSystem
-            // 最可靠的方式：把文件内容读入字节数组，通过 "jar:" URI + 原始 toUri() 打开
-            // 若失败则 fallback：把 .ysm 拷贝到临时 .zip 再打开
-            FileSystem fs = null;
-            try {
-                java.net.URI uri = new java.net.URI("jar", sourcePath.toUri().toString(), null);
-                fs = FileSystems.newFileSystem(uri, Collections.emptyMap());
-            } catch (Exception e1) {
-                // fallback：复制为临时 .zip 文件（绕开 .ysm 扩展名不被识别的问题）
-                java.io.File tmpZip = java.io.File.createTempFile("ysm_model_", ".zip");
-                tmpZip.deleteOnExit();
-                java.nio.file.Files.copy(sourcePath, tmpZip.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                java.net.URI tmpUri = java.net.URI.create("jar:" + tmpZip.toURI().toString());
-                fs = FileSystems.newFileSystem(tmpUri, Collections.emptyMap());
-            }
-            this.zipFileSystem = fs;
+            URI uri = URI.create("jar:" + sourcePath.toUri());
+            this.zipFileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap());
             this.rootPath = this.zipFileSystem.getPath("/");
         } else {
             throw new IllegalArgumentException("Unsupported file type. Expected directory or .zip");
@@ -98,7 +88,7 @@ public class YSMFolderDeserializer implements AutoCloseable {
             }
 
             if (data != null && !readFilesMd5Map.containsKey(normalizedPath)) {
-                readFilesMd5Map.put(normalizedPath, md5Hex(data)); // fabric服务端找不到apache codec DigestUtils
+                readFilesMd5Map.put(normalizedPath, md5Hex(data));
             }
             return data;
 
@@ -963,8 +953,7 @@ public class YSMFolderDeserializer implements AutoCloseable {
         try {
             BufferedImage img = null;
             switch (format) {
-                case 1 -> img = ImageIO.read(new ByteArrayInputStream(data));
-                case 3 -> img = new JpegDecoder().read(data);
+                case 1, 3 -> img = ImageIO.read(new ByteArrayInputStream(data));
                 case 4 -> img = new WebpDecoder().read(data);
                 case 5 -> img = new AvifDecoder().read(data);
             }
@@ -998,7 +987,7 @@ public class YSMFolderDeserializer implements AutoCloseable {
             case "swem" -> 8;
             case "slashblade" -> 9;
             case "tlm" -> 10;
-            case "fp_arm" -> 11;
+            case "fp.arm", "fp_arm" -> 11;
             case "immersive_melodies" -> 12;
             case "irons_spell_books" -> 13;
             default -> 0;
@@ -1252,29 +1241,5 @@ public class YSMFolderDeserializer implements AutoCloseable {
                 }
             }
         }
-    }
-
-
-    // fabric WHY java.lang.NoClassDefFoundError: org/apache/commons/codec/digest/DigestUtils
-    static final char[] DIGITS_LOWER = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
-    public static String md5Hex(byte[] data) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
-            return encodeHex(digest.digest(data));
-        } catch (NoSuchAlgorithmException e) {throw new RuntimeException(e);}
-    }
-    public static String sha256Hex(byte[] data) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return encodeHex(digest.digest(data));
-        } catch (NoSuchAlgorithmException e) {throw new RuntimeException(e);}
-    }
-    private static String encodeHex(byte[] hashBytes) {
-        char[] out = new char[hashBytes.length << 1];
-        for (int i = 0, j = 0; i < hashBytes.length; i++) {
-            out[j++] = DIGITS_LOWER[(0xF0 & hashBytes[i]) >>> 4];
-            out[j++] = DIGITS_LOWER[0x0F & hashBytes[i]];
-        }
-        return new String(out);
     }
 }

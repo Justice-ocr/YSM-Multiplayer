@@ -15,7 +15,7 @@ public class S2CModelSyncPayload {
     }
 
     public static void encode(S2CModelSyncPayload message, FriendlyByteBuf buf) {
-        buf.writeBytes(message.data);
+        buf.writeBytes(message.data.duplicate());
     }
 
     public static S2CModelSyncPayload decode(FriendlyByteBuf buf) {

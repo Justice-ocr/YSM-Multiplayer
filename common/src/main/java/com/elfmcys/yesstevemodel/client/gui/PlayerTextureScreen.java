@@ -1,14 +1,15 @@
 package com.elfmcys.yesstevemodel.client.gui;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
+import com.elfmcys.yesstevemodel.client.entity.PlayerPreviewEntity;
 import com.elfmcys.yesstevemodel.client.gui.button.FlatColorButton;
 import com.elfmcys.yesstevemodel.client.gui.button.IconButton;
 import com.elfmcys.yesstevemodel.client.gui.button.TextureButton;
-import com.elfmcys.yesstevemodel.client.entity.PlayerPreviewEntity;
 import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
 import com.elfmcys.yesstevemodel.client.renderer.CustomPlayerRenderer;
 import com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer;
 import com.elfmcys.yesstevemodel.client.renderer.RendererManager;
+import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
 import com.elfmcys.yesstevemodel.mixin.client.ScreenAccessor;
 import com.elfmcys.yesstevemodel.util.data.OrderedStringMap;
 import com.google.common.collect.Lists;
@@ -18,10 +19,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
-import net.minecraft.client.renderer.entity.player.PlayerRenderer;
+import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
-import net.minecraft.client.renderer.entity.state.PlayerRenderState;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -35,11 +37,6 @@ import java.util.List;
 import java.util.Objects;
 
 public class PlayerTextureScreen extends Screen {
-    private static final int PANEL_BG = 0xCC14171A;
-    private static final int PANEL_SOFT = 0xAA20252A;
-    private static final int PANEL_DARK = 0xAA0D0F12;
-    private static final int ACCENT = 0xFF5CC8A7;
-    private static final int TEXT = 0xFFF3F0E0;
 
     private static final String HIDDEN_PREFIX = "——";
 
@@ -103,7 +100,7 @@ public class PlayerTextureScreen extends Screen {
 
     public PlayerTextureScreen(PlayerModelScreen modelScreen, String str, ModelAssembly modelAssembly) {
         super(Component.literal("Player Texture GUI"));
-        this.currentAnimation = "idle";
+        this.currentAnimation = StringPool.EMPTY;
         this.offsetX = 0.0f;
         this.offsetY = -60.0f;
         this.zoom = 80.0f;
@@ -219,7 +216,9 @@ public class PlayerTextureScreen extends Screen {
             return;
         }
         renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        renderModernFrame(guiGraphics);
+        guiGraphics.fillGradient(this.guiLeft, this.guiTop + 22, this.guiLeft + 90, this.guiTop + 235, -14540254, -14540254);
+        guiGraphics.fillGradient(this.guiLeft + 93, this.guiTop, this.guiLeft + 299, this.guiTop + 235, -14540254, -14540254);
+        guiGraphics.fillGradient(this.guiLeft + 302, this.guiTop, this.guiLeft + 420, this.guiTop + 235, -14540254, -14540254);
         if (!this.modelHolder.getAnimationStateMachine().isCurrentAnimation(this.currentAnimation)) {
             this.modelHolder.getAnimationStateMachine().setCurrentAnimation(this.currentAnimation);
         }
@@ -229,24 +228,15 @@ public class PlayerTextureScreen extends Screen {
         int iWidth = this.guiLeft + 302 + ((118 - this.font.width(str)) / 2);
         int pageY = this.guiTop + 223;
         Objects.requireNonNull(this.font);
-        guiGraphics.drawString(font, str, iWidth, pageY - (9 / 2), TEXT);
+        guiGraphics.drawString(font, str, iWidth, pageY - (9 / 2), 0xFFF3F0E0);
         String str2 = String.format("%d/%d", this.animationCurrentPage + 1, this.animationMaxPage + 1);
-        guiGraphics.drawString(this.font, str2, this.guiLeft + 5 + ((80 - this.font.width(str2)) / 2), this.guiTop + 218, TEXT);
+        guiGraphics.drawString(this.font, str2, this.guiLeft + 5 + ((80 - this.font.width(str2)) / 2), this.guiTop + 218, 0xFFF3F0E0);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
         ((ScreenAccessor) this).ysm$getRenderables().stream().filter(renderable -> {
             return renderable instanceof FlatColorButton;
         }).forEach(renderable2 -> {
             ((FlatColorButton) renderable2).renderTooltip(guiGraphics, this, mouseX, mouseY);
         });
-    }
-
-    private void renderModernFrame(GuiGraphics guiGraphics) {
-        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 235, PANEL_BG);
-        guiGraphics.fill(this.guiLeft, this.guiTop, this.guiLeft + 420, this.guiTop + 2, ACCENT);
-        guiGraphics.fill(this.guiLeft, this.guiTop + 22, this.guiLeft + 90, this.guiTop + 235, PANEL_SOFT);
-        guiGraphics.fill(this.guiLeft + 93, this.guiTop, this.guiLeft + 299, this.guiTop + 235, PANEL_DARK);
-        guiGraphics.fill(this.guiLeft + 302, this.guiTop, this.guiLeft + 420, this.guiTop + 235, PANEL_SOFT);
-        guiGraphics.drawString(this.font, "Textures", this.guiLeft + 96, this.guiTop + 5, TEXT, false);
     }
 
     @Override
@@ -280,7 +270,11 @@ public class PlayerTextureScreen extends Screen {
         });
     }
 
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         if (this.minecraft == null || !isInPreviewArea(mouseX, mouseY)) {
             return false;
         }

@@ -13,7 +13,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.Pose;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Collection;
@@ -25,8 +24,6 @@ public class PlayerStateSynchronizer {
     private boolean dirty;
 
     private boolean isFlying;
-
-    private boolean isFallFlying;
 
     private int experienceLevel = -1;
 
@@ -90,13 +87,6 @@ public class PlayerStateSynchronizer {
             this.isFlying = serverPlayer.getAbilities().flying;
             if (sendNow) {
                 message.setFlying(this.isFlying);
-            }
-        }
-        boolean fallFlying = isFallFlying(serverPlayer);
-        if (this.isFallFlying != fallFlying) {
-            this.isFallFlying = fallFlying;
-            if (sendNow) {
-                message.setFallFlying(this.isFallFlying);
             }
         }
         if (this.health != ((int) serverPlayer.getHealth())) {
@@ -179,7 +169,6 @@ public class PlayerStateSynchronizer {
         S2CSyncPlayerStatePacket message = new S2CSyncPlayerStatePacket(serverPlayer.getId());
         message.markFullSync();
         message.setFlying(serverPlayer.getAbilities().flying);
-        message.setFallFlying(isFallFlying(serverPlayer));
         message.setExperienceLevel(serverPlayer.experienceLevel);
         message.setFoodLevel(serverPlayer.getFoodData().getFoodLevel());
         Collection<MobEffectInstance> activeEffects = serverPlayer.getActiveEffects();
@@ -210,9 +199,5 @@ public class PlayerStateSynchronizer {
         }
         message.setModelSwitch(this.syncedModelId);
         return message;
-    }
-
-    private static boolean isFallFlying(ServerPlayer serverPlayer) {
-        return serverPlayer.getPose() == Pose.FALL_FLYING || serverPlayer.isFallFlying() || serverPlayer.getFallFlyingTicks() > 0;
     }
 }

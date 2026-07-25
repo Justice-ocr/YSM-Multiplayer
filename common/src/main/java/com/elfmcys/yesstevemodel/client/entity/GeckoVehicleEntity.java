@@ -10,7 +10,7 @@ import com.elfmcys.yesstevemodel.client.upload.UploadManager;
 import com.elfmcys.yesstevemodel.geckolib3.core.builder.Animation;
 import com.elfmcys.yesstevemodel.client.upload.IResourceLocatable;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,7 +45,7 @@ public class GeckoVehicleEntity extends GeoEntity<Entity> {
     @Override
     @Nullable
     public GeoEntity.ModelWrapper buildRenderShape(ModelAssembly modelAssembly, boolean isDefault) {
-        VehicleModelBundle modelBundle = modelAssembly.getVehicleModels().get(this.entity.getType().builtInRegistryHolder().key().location());
+        VehicleModelBundle modelBundle = modelAssembly.getVehicleModels().get(this.entity.getType().builtInRegistryHolder().key().identifier());
         if (modelBundle != null) {
             return new EntityModelWrapper(modelAssembly, isDefault, modelBundle);
         }
@@ -55,7 +55,7 @@ public class GeckoVehicleEntity extends GeoEntity<Entity> {
     @Override
     public void onModelLoaded(ModelAssembly modelAssembly) {
         super.onModelLoaded(modelAssembly);
-        this.vehicleModel = modelAssembly.getVehicleModels().get(this.entity.getType().builtInRegistryHolder().key().location());
+        this.vehicleModel = modelAssembly.getVehicleModels().get(this.entity.getType().builtInRegistryHolder().key().identifier());
     }
 
     @Override
@@ -72,7 +72,7 @@ public class GeckoVehicleEntity extends GeoEntity<Entity> {
 
     @Override
     @NotNull
-    public ResourceLocation getTextureLocation() {
+    public Identifier getTextureLocation() {
         return ((EntityModelWrapper) getRenderShape()).textureLocatable.getResourceLocation().orElseGet(MissingTextureAtlasSprite::getLocation);
     }
 

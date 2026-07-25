@@ -1,45 +1,47 @@
 package com.elfmcys.yesstevemodel.model;
 
+import com.elfmcys.yesstevemodel.YesSteveModel;
+import com.elfmcys.yesstevemodel.capability.AuthModelsCapability;
 import com.elfmcys.yesstevemodel.capability.ModelInfoCapability;
 import com.elfmcys.yesstevemodel.client.ExportResult;
-import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccess;
+import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccessor;
+import com.elfmcys.yesstevemodel.config.ServerConfig;
+import com.elfmcys.yesstevemodel.mixin.ConnectionAccessor;
 import com.elfmcys.yesstevemodel.model.format.*;
+import com.elfmcys.yesstevemodel.network.NetworkHandler;
+import com.elfmcys.yesstevemodel.network.message.S2CModelSyncPayload;
+import com.elfmcys.yesstevemodel.network.message.S2CSyncAuthModelsPacket;
 import com.elfmcys.yesstevemodel.resource.YSMBinaryDeserializer;
 import com.elfmcys.yesstevemodel.resource.YSMBinarySerializer;
 import com.elfmcys.yesstevemodel.resource.YSMClientMapper;
 import com.elfmcys.yesstevemodel.resource.YSMFolderDeserializer;
 import com.elfmcys.yesstevemodel.resource.pojo.RawYsmModel;
-import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.NotNull;
-import rip.ysm.legacy.YesModelUtils;
-import rip.ysm.security.YsmCrypt;
-import rip.ysm.security.YSMByteBuf;
-import com.elfmcys.yesstevemodel.YesSteveModel;
-import com.elfmcys.yesstevemodel.capability.AuthModelsCapability;
-import com.elfmcys.yesstevemodel.config.ServerConfig;
-import com.elfmcys.yesstevemodel.network.NetworkHandler;
-import com.elfmcys.yesstevemodel.network.message.S2CSyncAuthModelsPacket;
-import com.elfmcys.yesstevemodel.network.message.S2CModelSyncPayload;
-import com.elfmcys.yesstevemodel.util.*;
+import com.elfmcys.yesstevemodel.util.YSMNativeHelper;
+import com.elfmcys.yesstevemodel.util.YSMThreadPool;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.RateLimiter;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.architectury.platform.Platform;
+import dev.architectury.utils.GameInstance;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.floats.FloatReferencePair;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import dev.architectury.platform.Platform;
-import dev.architectury.utils.GameInstance;
-import com.elfmcys.yesstevemodel.mixin.ConnectionAccessor;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import rip.ysm.legacy.YesModelUtils;
+import rip.ysm.security.YSMByteBuf;
+import rip.ysm.security.YsmCrypt;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -52,6 +54,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -100,6 +103,33 @@ public final class ServerModelManager {
     private static final SecureRandom theRandom = new SecureRandom();
     public static byte[] serverKey;
     private static volatile boolean initialized = false;
+
+    private static RateLimiter bandwidthLimiter = null;
+    private static Semaphore threadLimiter = null;
+    private static boolean limitsInitialized = false;
+
+    private static void initRateLimit() {
+        if (!limitsInitialized) {
+            try {
+                int mbps = ServerConfig.BANDWIDTH_LIMIT.get();
+                double bytesPerSec = Math.max(1.0, mbps * 131072.0);
+                bandwidthLimiter = RateLimiter.create(bytesPerSec);
+
+                int threads = ServerConfig.THREAD_COUNT.get();
+                if (threads <= 0) {
+                    threads = Math.max(2, Runtime.getRuntime().availableProcessors() - 1);
+                }
+                threadLimiter = new Semaphore(threads);
+
+                limitsInitialized = true;
+            } catch (Exception e) {
+                YesSteveModel.LOGGER.error("[YSM] Failed to initialize limits from config", e);
+                bandwidthLimiter = RateLimiter.create(5 * 131072.0);
+                threadLimiter = new Semaphore(Math.max(2, Runtime.getRuntime().availableProcessors() - 1));
+                limitsInitialized = true;
+            }
+        }
+    }
 
     public static class ServerPackData {
         public String folderPath;
@@ -296,17 +326,28 @@ public final class ServerModelManager {
         try (DirectoryStream<Path> groups = Files.newDirectoryStream(BUILT)) {
             for (Path group : groups) {
                 if (!Files.isDirectory(group)) continue;
+                boolean hasRemainingModels = false;
                 try (DirectoryStream<Path> models = Files.newDirectoryStream(group)) {
                     for (Path model : models) {
                         if (!Files.isDirectory(model)) continue;
+
                         String matchPath = "assets/yes_steve_model/builtin/" + group.getFileName() + "/" + model.getFileName() + "/";
+                        boolean deleted = false;
                         for (Pattern rule : rules) {
                             if (rule.matcher(matchPath).find()) {
                                 deleteRecursively(model);
+                                deleted = true;
                                 break;
                             }
                         }
+
+                        if (!deleted) {
+                            hasRemainingModels = true;
+                        }
                     }
+                }
+                if (!hasRemainingModels) {
+                    deleteRecursively(group);
                 }
             }
         } catch (IOException ignored) {
@@ -453,15 +494,24 @@ public final class ServerModelManager {
                         if (YSMFolderDeserializer.isModelFolder(dir)) {
                             String modelId = baseDir.relativize(dir).toString().replace('\\', '/');
 
+                            RawYsmModel rawModel = null;
                             try (YSMFolderDeserializer deserializer = new YSMFolderDeserializer(dir)) {
-                                RawYsmModel rawModel = deserializer.deserialize();
-                                ServerModelData data = processAndCacheModel(modelId, rawModel, cacheDir, isAuth, validCaches);
-                                if (data != null) {
-                                    loaded.put(modelId, data);
-                                    if (isAuth) authIds.add(modelId);
-                                }
+                                rawModel = deserializer.deserialize();
                             } catch (Exception e) {
                                 YesSteveModel.LOGGER.error("Failed to load model at: " + dir, e);
+                            }
+
+                            if (rawModel != null) {
+                                try {
+                                    ServerModelData data = processAndCacheModel(modelId, rawModel, cacheDir, isAuth, validCaches);
+                                    rawModel = null;
+                                    if (data != null) {
+                                        loaded.put(modelId, data);
+                                        if (isAuth) authIds.add(modelId);
+                                    }
+                                } catch (Exception e) {
+                                    YesSteveModel.LOGGER.error("Failed to process model at: " + dir, e);
+                                }
                             }
 
                             return FileVisitResult.SKIP_SUBTREE;
@@ -475,39 +525,35 @@ public final class ServerModelManager {
 
                 @Override
                 public @NotNull FileVisitResult visitFile(@NotNull Path file, @NotNull BasicFileAttributes attrs) {
-                    if (file.getFileName().toString().endsWith(".ysm")) {
-                        try {
-                            String relativePath = baseDir.relativize(file).toString().replace('\\', '/');
-                            String modelId = relativePath;
-                            byte[] raw = Files.readAllBytes(file);
-                            int ysmCryptoVersion = YesModelUtils.getYsmCryptoVersion(raw);
-                            if (ysmCryptoVersion == -1) throw new IllegalStateException("Unknown YSM crypto version for file: " + file);
-                            if (ysmCryptoVersion == 1 || ysmCryptoVersion == 2) { // 旧版加密模型
-                                Map<String, byte[]> input = YesModelUtils.input(raw);
-                                try (YSMFolderDeserializer deserializer = new YSMFolderDeserializer(input)) {
-                                    RawYsmModel rawModel = deserializer.deserialize();
-                                    ServerModelData data = processAndCacheModel(modelId, rawModel, cacheDir, isAuth, validCaches);
-                                    if (data != null) {
-                                        loaded.put(modelId, data);
-                                        if (isAuth) authIds.add(modelId);
-                                    }
-                                }
-                                return FileVisitResult.CONTINUE;
-                            }
+                    if (!file.getFileName().toString().endsWith(".ysm")) return FileVisitResult.CONTINUE;
 
+                    try {
+                        String modelId = baseDir.relativize(file).toString().replace('\\', '/');
+                        byte[] raw = Files.readAllBytes(file);
+                        int ysmCryptoVersion = YesModelUtils.getYsmCryptoVersion(raw);
+                        if (ysmCryptoVersion == -1) throw new IllegalStateException("Unknown YSM crypto version for file: " + file);
+
+                        RawYsmModel rawModel;
+                        if (ysmCryptoVersion == 1 || ysmCryptoVersion == 2) { // 旧版加密模型
+                            Map<String, byte[]> input = YesModelUtils.input(raw);
+                            try (YSMFolderDeserializer deserializer = new YSMFolderDeserializer(input)) {
+                                rawModel = deserializer.deserialize();
+                            }
+                        } else {
                             byte[] decrypted = YsmCrypt.decryptYsmFile(raw);
                             try (YSMBinaryDeserializer deserializer = new YSMBinaryDeserializer(decrypted)) {
-                                RawYsmModel rawModel = deserializer.deserializeKeepOpen();
+                                rawModel = deserializer.deserializeKeepOpen();
                                 deserializer.parseYSMFooter(rawModel); // 只用于gui展示数据
-                                ServerModelData data = processAndCacheModel(modelId, rawModel, cacheDir, isAuth, validCaches);
-                                if (data != null) {
-                                    loaded.put(modelId, data);
-                                    if (isAuth) authIds.add(modelId);
-                                }
                             }
-                        } catch (Exception e) {
-                            YesSteveModel.LOGGER.error("Failed to load binary model at: " + file, e);
                         }
+
+                        ServerModelData data = processAndCacheModel(modelId, rawModel, cacheDir, isAuth, validCaches);
+                        if (data != null) {
+                            loaded.put(modelId, data);
+                            if (isAuth) authIds.add(modelId);
+                        }
+                    } catch (Exception e) {
+                        YesSteveModel.LOGGER.error("Failed to load binary model at: " + file, e);
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -594,13 +640,18 @@ public final class ServerModelManager {
                 }
             }
             if (needsUpdate) {
-                try (YSMByteBuf serialized = YSMBinarySerializer.serialize(model, 32,true)) {
-                    byte[] rawBytes = new byte[serialized.getRawBuf().readableBytes()];
-                    serialized.getRawBuf().readBytes(rawBytes);
-
-                    byte[] encryptedCache = YsmCrypt.encryptServerCache(rawBytes, serverKey, hashes[0], hashes[1]);
-                    Files.write(cacheFile, encryptedCache);
+                byte[] encryptedCache;
+                try (YSMByteBuf serialized = YSMBinarySerializer.serialize(model, 32, true)) {
+                    io.netty.buffer.ByteBuf raw = serialized.getRawBuf();
+                    if (raw.hasArray()) {
+                        int off = raw.arrayOffset() + raw.readerIndex();
+                        int len = raw.readableBytes();
+                        encryptedCache = YsmCrypt.encryptServerCache(raw.array(), off, len, serverKey, hashes[0], hashes[1]);
+                    } else {
+                        encryptedCache = YsmCrypt.encryptServerCache(serialized.toArray(), serverKey, hashes[0], hashes[1]);
+                    }
                 }
+                Files.write(cacheFile, encryptedCache);
             }
             validCacheFiles.add(cacheFileName);
 
@@ -631,6 +682,7 @@ public final class ServerModelManager {
     }
 
     public static void nativeSyncModels(UUID[] uuids, String[] playerNames, String[] modelIds, Object callback) {
+        initRateLimit();
         YSMThreadPool.submitSync(() -> {
             try {
                 MinecraftServer currentServer = GameInstance.getServer();
@@ -754,6 +806,8 @@ public final class ServerModelManager {
     private static void sendPacket05(UUID uuid, PlayerSyncState state, List<long[]> requestedHashes) {
         YSMThreadPool.submitSync(() -> {
             try {
+                threadLimiter.acquire();
+
                 PendingTransfer transfer = new PendingTransfer();
 
                 for (long[] hashes : requestedHashes) {
@@ -766,7 +820,10 @@ public final class ServerModelManager {
 
                     byte[] fileData = Files.readAllBytes(file);
                     int totalSize = fileData.length;
-                    int chunkSize = 32000;
+                    int maxChunkSize = 30720;
+                    int chunkCount = (totalSize + maxChunkSize - 1) / maxChunkSize;
+                    int chunkSize = (totalSize + chunkCount - 1) / chunkCount;
+
                     int offset = 0;
 
                     while (offset < totalSize) {
@@ -787,6 +844,9 @@ public final class ServerModelManager {
                             outBuf.getRawBuf().writeBytes(fileData, offset, length);
                             YsmCrypt.EncryptedPacket result = YsmCrypt.encrypt(outBuf.toArray(), state.key1, false);
 
+//                            bandwidthLimiter.acquire(result.data().length); //TODO
+
+
                             // Stream chunks
                             boolean success = sendModelData(uuid, ByteBuffer.wrap(result.data()), transfer);
                             if (success) {
@@ -799,6 +859,8 @@ public final class ServerModelManager {
                 }
             } catch (Exception e) {
                 YesSteveModel.LOGGER.error("Failed to send model chunks to " + uuid, e);
+            } finally {
+                threadLimiter.release();
             }
         });
     }
@@ -881,6 +943,10 @@ public final class ServerModelManager {
         return AUTH_MODELS;
     }
 
+    public static Map<String, ServerPackData> getPacks() {
+        return packs;
+    }
+
     public static void requestPlayerAuth(ServerPlayer serverPlayer, @Nullable Consumer<UUIDComponentData> consumer) {
         MinecraftServer currentServer = GameInstance.getServer();
         currentServer.execute(() -> {
@@ -892,7 +958,7 @@ public final class ServerModelManager {
                 }
             }
             arrayList.sort((a, b) -> Float.compare(a.firstFloat(), b.firstFloat()));
-            nativeSyncModels(new UUID[]{serverPlayer.getUUID()}, new String[]{serverPlayer.getGameProfile().getName()}, collectPlayerModelIds(arrayList.stream().map(it.unimi.dsi.fastutil.Pair::second).toList()), consumer);
+            nativeSyncModels(new UUID[]{serverPlayer.getUUID()}, new String[]{serverPlayer.getGameProfile().name()}, collectPlayerModelIds(arrayList.stream().map(it.unimi.dsi.fastutil.Pair::second).toList()), consumer);
         });
     }
 
@@ -910,7 +976,7 @@ public final class ServerModelManager {
                 for (ServerPlayer value : players) {
                     validatePlayerModel(value);
                 }
-                nativeSyncModels(players.stream().filter(NetworkHandler::isPlayerConnected).map((player) -> player.getUUID()).toArray(i -> new UUID[i]), players.stream().filter(NetworkHandler::isPlayerConnected).map(serverPlayer -> serverPlayer.getGameProfile().getName()).toArray(i2 -> new String[i2]), collectPlayerModelIds(players), consumer2);
+                nativeSyncModels(players.stream().filter(NetworkHandler::isPlayerConnected).map((player) -> player.getUUID()).toArray(i -> new UUID[i]), players.stream().filter(NetworkHandler::isPlayerConnected).map(serverPlayer -> serverPlayer.getGameProfile().name()).toArray(i2 -> new String[i2]), collectPlayerModelIds(players), consumer2);
             });
         };
         return nativeLoadModels(action);
@@ -964,7 +1030,7 @@ public final class ServerModelManager {
         if (!serverGamePacketListenerImpl.isAcceptingMessages() || !serverGamePacketListenerImpl.getClass().equals(ServerGamePacketListenerImpl.class)) {
             return null;
         }
-        return ((ServerCommonPacketListenerImplAccess) serverGamePacketListenerImpl).ysm$getConnection();
+        return ((ServerCommonPacketListenerImplAccessor) serverGamePacketListenerImpl).ysm$getConnection();
     }
 
     private static boolean sendModelData(UUID uuid, ByteBuffer byteBuffer, PendingTransfer pendingTransfer) {

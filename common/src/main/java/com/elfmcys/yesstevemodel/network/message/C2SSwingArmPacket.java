@@ -45,7 +45,7 @@ public class C2SSwingArmPacket {
                 sender.swinging = true;
                 sender.swingingArm = interactionHand;
                 if (sender.level() instanceof ServerLevel) {
-                    ((ServerChunkCache) sender.level().getChunkSource()).broadcast(sender, new ClientboundAnimatePacket(sender, interactionHand == InteractionHand.MAIN_HAND ? 0 : 3));
+                    ((ServerChunkCache) sender.level().getChunkSource()).sendToTrackingPlayersAndSelf(sender, new ClientboundAnimatePacket(sender, interactionHand == InteractionHand.MAIN_HAND ? 0 : 3));
                 }
             }
         }

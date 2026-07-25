@@ -1,6 +1,6 @@
 package com.elfmcys.yesstevemodel.mixin;
 
-import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccess;
+import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccessor;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ServerGamePacketListenerImpl.class)
-public class ServerCommonPacketListenerImplMixin implements ServerCommonPacketListenerImplAccess {
+public class ServerCommonPacketListenerImplMixin implements ServerCommonPacketListenerImplAccessor {
 
     @Unique
     private Connection ysm$connection;

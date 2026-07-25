@@ -5,16 +5,16 @@ import com.elfmcys.yesstevemodel.event.api.SpecialPlayerRenderEvent;
 import dev.architectury.event.EventResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.resources.PlayerSkin;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.entity.player.Player;
 import rip.ysm.api.PlatformAPI;
 
 public class PlayerSkinTextureManager {
 
-    private static final ResourceLocation STEVE_SKIN = ResourceLocation.parse("textures/entity/player/wide/steve.png");
+    private static final Identifier STEVE_SKIN = Identifier.parse("textures/entity/player/wide/steve.png");
 
-    private static final ResourceLocation ALEX_SKIN = ResourceLocation.parse("textures/entity/player/slim/alex.png");
+    private static final Identifier ALEX_SKIN = Identifier.parse("textures/entity/player/slim/alex.png");
 
     private static final String STEVE_TEXTURE_ID = "misc/2_steve";
 
@@ -31,16 +31,16 @@ public class PlayerSkinTextureManager {
     }
 
     private static EventResult onRenderTexture(SpecialPlayerRenderEvent event) {
-        ResourceLocation location;
+        Identifier location;
         if (!YesSteveModel.isAvailable()) {
             return EventResult.pass();
         }
         Player player = event.getPlayer();
         if (isDefaultSkin(event.getModelId()) && (player instanceof AbstractClientPlayer abstractClientPlayer)) {
             Minecraft minecraft = Minecraft.getInstance();
-            PlayerSkin skin = minecraft.getSkinManager().getInsecureSkin(abstractClientPlayer.getGameProfile());
-            if (skin != null && skin.texture() != null) {
-                location = skin.texture();
+            PlayerSkin skin = minecraft.getSkinManager().createLookup(abstractClientPlayer.getGameProfile(), false).get();
+            if (skin != null && skin.body() != null) {
+                location = skin.body().texturePath();
             } else {
                 location = getSkinTexture(event.getModelId());
             }
@@ -53,7 +53,7 @@ public class PlayerSkinTextureManager {
         return str.equals(STEVE_TEXTURE_ID) || str.equals(ALEX_TEXTURE_ID);
     }
 
-    private static ResourceLocation getSkinTexture(String str) {
+    private static Identifier getSkinTexture(String str) {
         return str.equals(STEVE_TEXTURE_ID) ? STEVE_SKIN : ALEX_SKIN;
     }
 }

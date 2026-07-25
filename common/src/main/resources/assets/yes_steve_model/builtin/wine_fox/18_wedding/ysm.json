@@ -140,7 +140,7 @@
 				},
 				"animation": "animations/GMA_T.50.animation.json"
 			},
-			"minecraft:boat": {
+			"#minecraft:boat": {
 				"model": "models/GMA_T.50.json",
 				"texture": {
 					"uv": "textures/Cartexture.png"

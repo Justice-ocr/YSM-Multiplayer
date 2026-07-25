@@ -4,11 +4,11 @@
   "version": "${version}",
   "name": "Yes Steve Model",
   "description": "",
-  "authors": ["TartaricAcid"],
+  "authors": ["Tianjin Accessible Care Innovation Development Co., Ltd."],
   "contact": {
     "homepage": ""  },
   "license": "MIT",
-  "icon": "assets/yes_steve_model/icon.png",
+  "icon": "yesstevemodel.png",
   "environment": "*",
   "entrypoints": {
     "main": [

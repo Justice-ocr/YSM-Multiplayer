@@ -6,7 +6,7 @@ import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.Pair;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntityType;
 
@@ -60,8 +60,8 @@ public final class FileTypeUtil {
         return lastSlashIndex >= 0 ? trimmedPath.substring(lastSlashIndex + 1) : trimmedPath;
     }
 
-    public static ResourceLocation getPackIconLocation(String str) {
-        return ResourceLocation.fromNamespaceAndPath(YesSteveModel.MOD_ID, "model_pack_icon/" + str.hashCode());
+    public static Identifier getPackIconLocation(String str) {
+        return Identifier.fromNamespaceAndPath(YesSteveModel.MOD_ID, "model_pack_icon/" + str.hashCode());
     }
 
     /**
@@ -72,21 +72,21 @@ public final class FileTypeUtil {
      *  ],
      *  甯?鐨勬槸瀹炰綋 Tag
      */
-    public static Set<ResourceLocation> resolveEntityTypes(String[] strArr) {
-        HashSet<ResourceLocation> hashSet = new HashSet<>();
+    public static Set<Identifier> resolveEntityTypes(String[] strArr) {
+        HashSet<Identifier> hashSet = new HashSet<>();
         for (String str : strArr) {
             if (str.startsWith("#")) {
-                ResourceLocation resourceLocation = ResourceLocation.tryParse(str.substring(1));
-                if (resourceLocation != null) {
-                    TagKey<EntityType<?>> tagKey = TagKey.create(Registries.ENTITY_TYPE, resourceLocation);
+                Identifier identifier = Identifier.tryParse(str.substring(1));
+                if (identifier != null) {
+                    TagKey<EntityType<?>> tagKey = TagKey.create(Registries.ENTITY_TYPE, identifier);
                     BuiltInRegistries.ENTITY_TYPE.get(tagKey).ifPresent(holderSet ->
-                        holderSet.forEach(holder -> holder.unwrapKey().ifPresent(rk -> hashSet.add(rk.location())))
+                        holderSet.forEach(holder -> holder.unwrapKey().ifPresent(rk -> hashSet.add(rk.identifier())))
                     );
                 }
             } else {
-                ResourceLocation resourceLocation = ResourceLocation.tryParse(str);
-                if (resourceLocation != null) {
-                    hashSet.add(resourceLocation);
+                Identifier identifier = Identifier.tryParse(str);
+                if (identifier != null) {
+                    hashSet.add(identifier);
                 }
             }
         }

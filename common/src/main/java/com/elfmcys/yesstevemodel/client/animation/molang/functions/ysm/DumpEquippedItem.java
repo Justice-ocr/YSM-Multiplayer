@@ -11,7 +11,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentUtils;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -22,8 +22,8 @@ public class DumpEquippedItem extends LivingEntityFunction {
     @Override
     public Object eval(ExecutionContext<IContext<LivingEntity>> context, ArgumentCollection arguments) {
         EquipmentSlot slot;
-        ResourceLocation key;
-        if (!context.entity().isDebugMode() || (slot = MolangUtils.parseSlotType(context.entity(), arguments.getAsString(context, 0))) == null) {
+        Identifier key;
+        if (!context.entity().isDebugMode() || (slot = MolangUtils.parseSlotType(context, arguments, 0)) == null) {
             return null;
         }
         ItemStack stack = CosmeticArmorHelper.getArmorItem(context.entity().entity(), slot);
@@ -39,7 +39,7 @@ public class DumpEquippedItem extends LivingEntityFunction {
         for (Object2IntMap.Entry<Holder<Enchantment>> entry : enchantments.entrySet()) {
             Holder<Enchantment> holder = entry.getKey();
             int lvl = entry.getIntValue();
-            ResourceLocation name = holder.unwrapKey().map(rk -> rk.location()).orElse(null);
+            Identifier name = holder.unwrapKey().map(rk -> rk.identifier()).orElse(null);
             if (name != null) {
                 context.entity().logWarningComponent(Component.literal("Enchantment: display ").append(ComponentUtils.copyOnClickText(Enchantment.getFullname(holder, lvl).getString(99))).append(Component.literal("  name ").append(ComponentUtils.copyOnClickText(name.toString()))));
             }

@@ -5,7 +5,7 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
@@ -31,7 +31,7 @@ public class ConditionUse {
 
     private final String extraPre;
 
-    private final ObjectOpenHashSet<ResourceLocation> idTest = new ObjectOpenHashSet<>();
+    private final ObjectOpenHashSet<Identifier> idTest = new ObjectOpenHashSet<>();
 
     private final ReferenceArrayList<TagKey<Item>> tagTest = new ReferenceArrayList<>();
 
@@ -58,11 +58,11 @@ public class ConditionUse {
             return;
         }
         String strSubstring = name.substring(this.preSize);
-        if (name.startsWith(this.idPre) && (ResourceLocation.tryParse(strSubstring) != null)) {
-            this.idTest.add(ResourceLocation.parse(strSubstring));
+        if (name.startsWith(this.idPre) && (Identifier.tryParse(strSubstring) != null)) {
+            this.idTest.add(Identifier.parse(strSubstring));
         }
-        if (name.startsWith(this.tagPre) && (ResourceLocation.tryParse(strSubstring) != null)) {
-            this.tagTest.add(TagKey.create(Registries.ITEM, ResourceLocation.parse(strSubstring)));
+        if (name.startsWith(this.tagPre) && (Identifier.tryParse(strSubstring) != null)) {
+            this.tagTest.add(TagKey.create(Registries.ITEM, Identifier.parse(strSubstring)));
         }
         if (!name.startsWith(this.extraPre) || strSubstring.equals(ItemUseAnimation.NONE.name().toLowerCase(Locale.US))) {
             return;
@@ -92,7 +92,7 @@ public class ConditionUse {
         if (this.idTest.isEmpty()) {
             return EMPTY;
         }
-        ResourceLocation key = BuiltInRegistries.ITEM.getKey(livingEntity.getItemInHand(interactionHand).getItem());
+        Identifier key = BuiltInRegistries.ITEM.getKey(livingEntity.getItemInHand(interactionHand).getItem());
         if (this.idTest.contains(key)) {
             return this.idPre + key;
         }

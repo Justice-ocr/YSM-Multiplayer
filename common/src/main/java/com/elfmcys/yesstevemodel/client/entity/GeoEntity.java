@@ -120,9 +120,6 @@ public abstract class GeoEntity<T extends Entity> extends AnimatableEntity<T> {
             }
         }, () -> {
             ModelAssembly modelAssembly = ClientModelManager.getLocalModelContext();
-            // 如果 localModelContext 为 null（模型正在异步加载中），保留现有 renderShape 不变
-            // 避免 clearModel() 被触发导致一帧内 modelAssembly=null，闪现原版皮肤
-            if (modelAssembly == null) return;
             if (this.renderShape == null || !this.renderShape.isDefault || modelAssembly != this.renderShape.context) {
                 this.renderShape = buildRenderShape(modelAssembly, true);
             }
@@ -163,7 +160,7 @@ public abstract class GeoEntity<T extends Entity> extends AnimatableEntity<T> {
     public void reset() {
         super.reset();
         this.bones = null;
-        this.updateTicks = -1;
+        this.updateTicks = 0;
     }
 
     public void resetModel() {

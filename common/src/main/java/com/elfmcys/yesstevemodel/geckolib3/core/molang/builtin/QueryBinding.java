@@ -1,7 +1,6 @@
 package com.elfmcys.yesstevemodel.geckolib3.core.molang.builtin;
 
 import com.elfmcys.yesstevemodel.capability.PlayerCapability;
-import com.elfmcys.yesstevemodel.client.animation.PlayerStatePredicates;
 import com.elfmcys.yesstevemodel.geckolib3.core.controller.AnimationControllerContext;
 import com.elfmcys.yesstevemodel.audio.PlaybackFlags;
 import rip.ysm.compat.cosmeticarmorreworked.CosmeticArmorHelper;
@@ -11,7 +10,6 @@ import com.elfmcys.yesstevemodel.geckolib3.core.molang.binding.ContextBinding;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.builtin.query.*;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.context.IContext;
 import com.elfmcys.yesstevemodel.geckolib3.util.MolangUtils;
-import com.elfmcys.yesstevemodel.geckolib3.util.MovementQuery;
 import com.elfmcys.yesstevemodel.geckolib3.core.EntityFrameStateTracker;
 import com.elfmcys.yesstevemodel.util.CameraUtil;
 import net.minecraft.client.CameraType;
@@ -26,6 +24,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
 
@@ -57,20 +56,20 @@ public class QueryBinding extends ContextBinding {
         var("life_time", ctx -> ctx.geoInstance().getSeekTime() / 20.0d);
         var("head_x_rotation", ctx -> ctx.data().netHeadYaw);
         var("head_y_rotation", ctx -> ctx.data().headPitch);
-        var("moon_phase", ctx -> ctx.level().getMoonPhase());
+        var("moon_phase", ctx -> (int) ((ctx.level().getDayTime() / 24000L) % 8L));
         var("time_of_day", ctx -> MolangUtils.normalizeTime(ctx.level().getDayTime()));
         var("time_stamp", ctx -> ctx.level().getDayTime());
         var("delta_time", ctx -> ctx.geoInstance().getPositionTracker().getTimeDelta() / 20.0f);
 
         entityVar("yaw_speed", QueryBinding::getYawSpeed);
         entityVar("cardinal_facing_2d", ctx -> ctx.entity().getDirection().get3DDataValue());
-        entityVar("distance_from_camera", ctx -> ctx.mc().gameRenderer.getMainCamera().getPosition().distanceTo(ctx.entity().position()));
-        entityVar("eye_target_x_rotation", ctx -> ctx.entity().getViewXRot(ctx.animationEvent().getFrameTime()));
-        entityVar("eye_target_y_rotation", ctx -> ctx.entity().getViewYRot(ctx.animationEvent().getFrameTime()));
-        entityVar("ground_speed", QueryBinding::getGroundSpeed);
-        entityVar("modified_distance_moved", QueryBinding::getModifiedDistanceMoved);
+        entityVar("distance_from_camera", ctx -> ctx.mc().gameRenderer.getMainCamera().position().distanceTo(ctx.entity().position()));
+        entityVar("eye_target_x_rotation", ctx -> ctx.entity().getViewXRot(ctx.animationEvent().getPartialTick()));
+        entityVar("eye_target_y_rotation", ctx -> ctx.entity().getViewYRot(ctx.animationEvent().getPartialTick()));
+        entityVar("ground_speed", ctx -> getGroundSpeed(ctx.entity()));
+        entityVar("modified_distance_moved", ctx -> ctx.entity().moveDist);
         entityVar("vertical_speed", QueryBinding::getVerticalSpeed);
-        entityVar("walk_distance", QueryBinding::getModifiedDistanceMoved);
+        entityVar("walk_distance", ctx -> ctx.entity().moveDist);
         entityVar("has_rider", ctx -> ctx.entity().isVehicle());
         entityVar("is_first_person", ctx -> CameraUtil.getCameraType(ctx) == CameraType.FIRST_PERSON.ordinal());
         entityVar("is_in_water", ctx -> ctx.entity().isInWater());
@@ -80,11 +79,11 @@ public class QueryBinding extends ContextBinding {
         entityVar("is_riding", ctx -> ctx.entity().isPassenger());
         entityVar("is_sneaking", ctx -> ctx.entity().onGround() && ctx.entity().getPose() == Pose.CROUCHING);
         entityVar("is_spectator", ctx -> ctx.entity().isSpectator());
-        entityVar("is_sprinting", QueryBinding::isSprinting);
+        entityVar("is_sprinting", ctx -> ctx.entity().isSprinting());
         entityVar("is_swimming", ctx -> ctx.entity().isSwimming());
 
         livingEntityVar("body_x_rotation", ctx -> Mth.lerp(ctx.animationEvent().getFrameTime(), ctx.entity().xRotO, ctx.entity().getXRot()));
-        livingEntityVar("body_y_rotation", ctx -> Mth.wrapDegrees(Mth.lerp(ctx.animationEvent().getFrameTime(), ctx.entity().yBodyRotO, ctx.entity().yBodyRot)));
+        livingEntityVar("body_y_rotation", ctx -> Mth.wrapDegrees(Mth.lerp(ctx.animationEvent().getPartialTick(), ctx.entity().yBodyRotO, ctx.entity().yBodyRot)));
         livingEntityVar("health", QueryBinding::getHealth);
         livingEntityVar("max_health", QueryBinding::getMaxHealth);
         livingEntityVar("hurt_time", ctx -> ctx.entity().hurtTime);
@@ -153,7 +152,7 @@ public class QueryBinding extends ContextBinding {
     }
 
     private static boolean hasCape(AbstractClientPlayer abstractClientPlayer) {
-        return !abstractClientPlayer.isInvisible() && abstractClientPlayer.isModelPartShown(PlayerModelPart.CAPE) && abstractClientPlayer.getSkin().capeTexture() != null;
+        return !abstractClientPlayer.isInvisible() && abstractClientPlayer.isModelPartShown(PlayerModelPart.CAPE) && abstractClientPlayer.getSkin().cape() != null;
     }
 
     private static int getEquipmentCount(LivingEntity entity) {
@@ -181,43 +180,23 @@ public class QueryBinding extends ContextBinding {
         return 20.0f * (context.entity().getYRot() - context.entity().yRotO);
     }
 
-    private static float getGroundSpeed(IContext<Entity> context) {
-        if (context.entity() instanceof LivingEntity livingEntity) {
-            return PlayerStatePredicates.getGroundSpeed(livingEntity, context.animationEvent());
-        }
-        return MovementQuery.getMeasuredGroundSpeed(context.entity(), context.geoInstance().getPositionTracker());
-    }
-
-    private static boolean isSprinting(IContext<Entity> context) {
-        Entity entity = context.entity();
-        if (!entity.isSprinting()) {
-            return false;
-        }
-        if (entity instanceof LivingEntity livingEntity) {
-            return PlayerStatePredicates.isMoving(livingEntity, context.animationEvent());
-        }
-        return true;
-    }
-
-    private static float getModifiedDistanceMoved(IContext<Entity> context) {
-        if (context.entity() instanceof LivingEntity livingEntity && PlayerStatePredicates.getGroundSpeed(livingEntity, context.animationEvent()) <= MovementQuery.EPSILON) {
-            return 0.0f;
-        }
-        return context.entity().moveDist;
+    private static float getGroundSpeed(Entity entity) {
+        Vec3 deltaMovement = entity.getDeltaMovement();
+        return 20.0f * Mth.sqrt((float) ((deltaMovement.x * deltaMovement.x) + (deltaMovement.z * deltaMovement.z)));
     }
 
     private static float getVerticalSpeed(IContext<Entity> context) {
         EntityFrameStateTracker<?> positionTracker = context.geoInstance().getPositionTracker();
-        return MovementQuery.getVerticalSpeed(context.entity(), positionTracker);
+        return (20.0f * ((float) positionTracker.getPositionDelta().y)) / positionTracker.getTimeDelta();
     }
 
     private static float getCapeFlapAmount(IContext<Player> context) {
         float gameTime = context.animationEvent().getFrameTime();
         Player player = context.entity();
         AbstractClientPlayer ap = (AbstractClientPlayer) player;
-        float fLerp = (float) (Mth.lerp(gameTime, player.xCloakO, player.xCloak) - Mth.lerp(gameTime, player.xo, player.getX()));
-        float fLerp2 = (float) (Mth.lerp(gameTime, player.yCloakO, player.yCloak) - Mth.lerp(gameTime, player.yo, player.getY()));
-        float fLerp3 = (float) (Mth.lerp(gameTime, player.zCloakO, player.zCloak) - Mth.lerp(gameTime, player.zo, player.getZ()));
+        float fLerp = (float) (ap.avatarState().getInterpolatedCloakX(gameTime) - Mth.lerp(gameTime, player.xo, player.getX()));
+        float fLerp2 = (float) (ap.avatarState().getInterpolatedCloakY(gameTime) - Mth.lerp(gameTime, player.yo, player.getY()));
+        float fLerp3 = (float) (ap.avatarState().getInterpolatedCloakZ(gameTime) - Mth.lerp(gameTime, player.zo, player.getZ()));
         float f = player.yBodyRotO + (player.yBodyRot - player.yBodyRotO);
         float fSin = Mth.sin(f * 0.017453292f);
         float f2 = -Mth.cos(f * 0.017453292f);
@@ -226,7 +205,7 @@ public class QueryBinding extends ContextBinding {
         if (fClamp2 < 0.0f) {
             fClamp2 = 0.0f;
         }
-        float fSin2 = fClamp + (Mth.sin(Mth.lerp(gameTime, ap.walkDistO, ap.walkDist) * 6.0f) * 32.0f * Mth.lerp(gameTime, ap.oBob, ap.bob));
+        float fSin2 = fClamp + (Mth.sin(ap.avatarState().getInterpolatedWalkDistance(gameTime) * 6.0f) * 32.0f * ap.avatarState().getInterpolatedBob(gameTime));
         if (player.isCrouching()) {
             fSin2 += 25.0f;
         }

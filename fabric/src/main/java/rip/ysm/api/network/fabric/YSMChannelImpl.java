@@ -1,5 +1,8 @@
 package rip.ysm.api.network.fabric;
 
+import com.elfmcys.yesstevemodel.mixin.ConnectionAccessor;
+import com.elfmcys.yesstevemodel.network.NetworkHandler;
+import com.elfmcys.yesstevemodel.network.message.C2SModelSyncPayload;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -7,35 +10,48 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.network.Connection;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
-import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccess;
+import com.elfmcys.yesstevemodel.access.ServerCommonPacketListenerImplAccessor;
 import rip.ysm.api.network.PacketContext;
 import rip.ysm.api.network.PacketDirection;
 import rip.ysm.api.network.fabric.client.YSMChannelClientImpl;
 
+import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 public final class YSMChannelImpl {
 
+    private static final int FRAGMENT_DISCRIMINATOR = 255;
+    private static final int FRAGMENT_DATA_SIZE = 30_000;
+    private static final int MAX_FRAGMENT_COUNT = 128;
+    private static final int MAX_REASSEMBLED_SIZE = 2 * 1024 * 1024;
+    private static final long FRAGMENT_TIMEOUT_NANOS = 30_000_000_000L;
+
     private static final Map<Integer, Codec<?>> CODECS_BY_ID = new HashMap<>();
     private static final Map<Class<?>, Integer> ID_BY_CLASS = new HashMap<>();
+    private static final Map<Connection, Map<Integer, FragmentAccumulator>> INCOMING_FRAGMENTS = new ConcurrentHashMap<>();
+    private static final AtomicInteger NEXT_TRANSFER_ID = new AtomicInteger();
 
-    private static ResourceLocation channelId;
+    private static Identifier channelId;
     private static volatile MinecraftServer currentServer;
 
     private YSMChannelImpl() {
     }
 
-    public static void init(ResourceLocation id, String version) {
+    public static void init(Identifier id, String version) {
         channelId = id;
         YSMPayload.init(id);
         PayloadTypeRegistry.playC2S().register(YSMPayload.TYPE, YSMPayload.CODEC);
@@ -46,7 +62,7 @@ public final class YSMChannelImpl {
 
         ServerPlayNetworking.registerGlobalReceiver(YSMPayload.TYPE, (payload, context) ->
                 dispatch(payload.toBuf(), new ServerPacketContext(context.server(), context.player(),
-                        ((ServerCommonPacketListenerImplAccess) (Object) context.player().connection).ysm$getConnection())));
+                        ((ServerCommonPacketListenerImplAccessor) (Object) context.player().connection).ysm$getConnection())));
 
         if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
             YSMChannelClientImpl.init(channelId);
@@ -64,6 +80,10 @@ public final class YSMChannelImpl {
 
     public static void dispatch(FriendlyByteBuf buf, PacketContext ctx) {
         int discriminator = buf.readUnsignedByte();
+        if (discriminator == FRAGMENT_DISCRIMINATOR) {
+            handleFragment(FragmentPacket.decode(buf), ctx);
+            return;
+        }
         Codec<?> codec = CODECS_BY_ID.get(discriminator);
         if (codec != null) {
             codec.dispatch(buf, ctx);
@@ -74,7 +94,14 @@ public final class YSMChannelImpl {
         if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) {
             return;
         }
-        YSMChannelClientImpl.sendToServer(encodePayload(packet));
+        YSMPayload payload = encodePayload(packet);
+        if (packet instanceof C2SModelSyncPayload
+                && NetworkHandler.serverSupportsModelSyncFragments()
+                && payload.data().length > FRAGMENT_DATA_SIZE) {
+            sendFragments(payload.data());
+            return;
+        }
+        YSMChannelClientImpl.sendToServer(payload);
     }
 
     public static void sendToClientPlayer(Object packet, ServerPlayer player) {
@@ -131,5 +158,112 @@ public final class YSMChannelImpl {
         byte[] arr = new byte[buf.readableBytes()];
         buf.readBytes(arr);
         return new YSMPayload(arr);
+    }
+
+    private static void sendFragments(byte[] encoded) {
+        if (encoded.length > MAX_REASSEMBLED_SIZE) {
+            throw new IllegalArgumentException("Fragmented YSM packet exceeds maximum size");
+        }
+        int transferId = NEXT_TRANSFER_ID.incrementAndGet();
+        int fragmentCount = (encoded.length + FRAGMENT_DATA_SIZE - 1) / FRAGMENT_DATA_SIZE;
+        for (int index = 0; index < fragmentCount; index++) {
+            int from = index * FRAGMENT_DATA_SIZE;
+            int to = Math.min(from + FRAGMENT_DATA_SIZE, encoded.length);
+            FriendlyByteBuf fragment = new FriendlyByteBuf(Unpooled.buffer());
+            try {
+                fragment.writeByte(FRAGMENT_DISCRIMINATOR);
+                FragmentPacket.encode(new FragmentPacket(
+                        transferId, index, fragmentCount, Arrays.copyOfRange(encoded, from, to)
+                ), fragment);
+                YSMChannelClientImpl.sendToServer(YSMPayload.fromBuf(fragment));
+            } finally {
+                fragment.release();
+            }
+        }
+    }
+
+    private static void handleFragment(FragmentPacket packet, PacketContext context) {
+        if (!context.isServerSide()) return;
+        long now = System.nanoTime();
+        Connection connection = context.getConnection();
+        Map<Integer, FragmentAccumulator> newTransfers = new ConcurrentHashMap<>();
+        Map<Integer, FragmentAccumulator> transfers = INCOMING_FRAGMENTS.putIfAbsent(connection, newTransfers);
+        if (transfers == null) {
+            transfers = newTransfers;
+            Map<Integer, FragmentAccumulator> registeredTransfers = transfers;
+            ((ConnectionAccessor) connection).ysm$getChannel().closeFuture()
+                    .addListener(ignored -> INCOMING_FRAGMENTS.remove(connection, registeredTransfers));
+        }
+        transfers.entrySet().removeIf(entry -> now - entry.getValue().lastUpdateNanos > FRAGMENT_TIMEOUT_NANOS);
+        FragmentAccumulator accumulator = transfers.computeIfAbsent(
+                packet.transferId(), ignored -> new FragmentAccumulator(packet.fragmentCount())
+        );
+        byte[] complete = accumulator.add(packet, now);
+        if (complete == null) return;
+        transfers.remove(packet.transferId(), accumulator);
+        if (transfers.isEmpty()) {
+            INCOMING_FRAGMENTS.remove(connection, transfers);
+        }
+        FriendlyByteBuf original = new FriendlyByteBuf(Unpooled.wrappedBuffer(complete));
+        try {
+            dispatch(original, context);
+            if (original.isReadable()) {
+                throw new IllegalArgumentException("Fragmented YSM packet left " + original.readableBytes() + " unread bytes");
+            }
+        } finally {
+            original.release();
+        }
+    }
+
+    private record FragmentPacket(int transferId, int fragmentIndex, int fragmentCount, byte[] data) {
+        private static void encode(FragmentPacket packet, FriendlyByteBuf buf) {
+            buf.writeVarInt(packet.transferId);
+            buf.writeVarInt(packet.fragmentIndex);
+            buf.writeVarInt(packet.fragmentCount);
+            buf.writeByteArray(packet.data);
+        }
+
+        private static FragmentPacket decode(FriendlyByteBuf buf) {
+            return new FragmentPacket(
+                    buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readByteArray(FRAGMENT_DATA_SIZE)
+            );
+        }
+    }
+
+    private static final class FragmentAccumulator {
+        private final byte[][] fragments;
+        private int received;
+        private int totalSize;
+        private volatile long lastUpdateNanos = System.nanoTime();
+
+        private FragmentAccumulator(int fragmentCount) {
+            if (fragmentCount <= 0 || fragmentCount > MAX_FRAGMENT_COUNT) {
+                throw new IllegalArgumentException("Invalid YSM fragment count: " + fragmentCount);
+            }
+            this.fragments = new byte[fragmentCount][];
+        }
+
+        private synchronized byte[] add(FragmentPacket packet, long now) {
+            if (packet.fragmentCount() != fragments.length
+                    || packet.fragmentIndex() < 0
+                    || packet.fragmentIndex() >= fragments.length) {
+                throw new IllegalArgumentException("Inconsistent YSM fragment metadata");
+            }
+            lastUpdateNanos = now;
+            if (fragments[packet.fragmentIndex()] == null) {
+                fragments[packet.fragmentIndex()] = packet.data();
+                received++;
+                totalSize += packet.data().length;
+                if (totalSize > MAX_REASSEMBLED_SIZE) {
+                    throw new IllegalArgumentException("Fragmented YSM packet exceeds maximum size");
+                }
+            }
+            if (received != fragments.length) return null;
+            ByteArrayOutputStream output = new ByteArrayOutputStream(totalSize);
+            for (byte[] fragment : fragments) {
+                output.write(fragment, 0, fragment.length);
+            }
+            return output.toByteArray();
+        }
     }
 }
