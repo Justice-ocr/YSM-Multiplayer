@@ -25,7 +25,7 @@ public class ReplacePlayerRenderEvent {
     private ReplacePlayerRenderEvent() {
     }
 
-    public static boolean onRenderPlayerPre(Player entity, AvatarRenderState renderState, float partialTick, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraState) {
+    public static boolean shouldReplacePlayer(Player entity) {
         if (!YesSteveModel.isAvailable()) {
             return false;
         }
@@ -36,31 +36,31 @@ public class ReplacePlayerRenderEvent {
         if ((!entity.equals(localPlayer) && GeneralConfig.DISABLE_OTHER_MODEL.get().booleanValue()) || entity.isSpectator()) {
             return false;
         }
-        boolean[] cancelled = {false};
-        PlayerCapability.get(entity).ifPresent(cap -> {
-            if (cap.isModelActive()) {
-                if (!CameraUtil.isFirstPerson(cap)
-                        || FirstPersonCompat.isFirstPersonActive()
-                        || RealCameraCompat.isActive()
-                        || GeneralConfig.DISABLE_EXTERNAL_FP_ANIM.get().booleanValue()
-                        || !PlayerAnimatorCompat.isPlayerAnimated(localPlayer)) {
-                    cancelled[0] = true;
-                    MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
-                    RenderContext.enter(collector, cameraState);
-                    try {
-                        int packedLight = ModelPreviewRenderer.isPreview()
-                                ? net.minecraft.client.renderer.LightTexture.FULL_BRIGHT
-                                : renderState.lightCoords;
-                        RendererManager.getPlayerRenderer().render(entity, renderState, entity.getYRot(), ModelPreviewRenderer.isPreview() ? 1.0f : partialTick, poseStack, bufferSource, packedLight);
-                        if (OculusCompat.isRenderingShadowPass()) {
-                            bufferSource.endBatch();
-                        }
-                    } finally {
-                        RenderContext.exit();
-                    }
-                }
+        return PlayerCapability.get(entity).map(cap -> cap.isModelActive()
+                && (!CameraUtil.isFirstPerson(cap)
+                || FirstPersonCompat.isFirstPersonActive()
+                || RealCameraCompat.isActive()
+                || GeneralConfig.DISABLE_EXTERNAL_FP_ANIM.get().booleanValue()
+                || !PlayerAnimatorCompat.isPlayerAnimated(localPlayer))).orElse(false);
+    }
+
+    public static boolean onRenderPlayerPre(Player entity, AvatarRenderState renderState, float partialTick, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState cameraState) {
+        if (!shouldReplacePlayer(entity)) {
+            return false;
+        }
+        MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
+        RenderContext.enter(collector, cameraState);
+        try {
+            int packedLight = ModelPreviewRenderer.isPreview()
+                    ? net.minecraft.client.renderer.LightTexture.FULL_BRIGHT
+                    : renderState.lightCoords;
+            RendererManager.getPlayerRenderer().render(entity, renderState, entity.getYRot(), ModelPreviewRenderer.isPreview() ? 1.0f : partialTick, poseStack, bufferSource, packedLight);
+            if (OculusCompat.isRenderingShadowPass()) {
+                bufferSource.endBatch();
             }
-        });
-        return cancelled[0];
+        } finally {
+            RenderContext.exit();
+        }
+        return true;
     }
 }
