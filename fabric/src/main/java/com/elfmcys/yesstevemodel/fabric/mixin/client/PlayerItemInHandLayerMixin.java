@@ -9,6 +9,8 @@ import net.minecraft.client.renderer.entity.layers.ItemInHandLayer;
 import net.minecraft.client.renderer.entity.state.ArmedEntityRenderState;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -29,9 +31,15 @@ public abstract class PlayerItemInHandLayerMixin {
         }
         Entity entity = EntityRenderStateBindings.get(avatarRenderState);
         if (entity instanceof Player player
-                && !itemStack.is(ItemTagsConstants.SWORDS)
+                && !ysm$isSword(itemStack)
                 && ReplacePlayerRenderEvent.shouldReplacePlayer(player)) {
             ci.cancel();
         }
+    }
+
+    private static boolean ysm$isSword(ItemStack itemStack) {
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(itemStack.getItem());
+        return itemStack.is(ItemTagsConstants.SWORDS)
+                || (itemId != null && "minecraft".equals(itemId.getNamespace()) && itemId.getPath().endsWith("_sword"));
     }
 }
