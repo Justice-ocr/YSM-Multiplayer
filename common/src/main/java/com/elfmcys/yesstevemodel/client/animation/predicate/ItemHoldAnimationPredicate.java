@@ -11,7 +11,6 @@ import com.elfmcys.yesstevemodel.geckolib3.core.enums.PlayState;
 import com.elfmcys.yesstevemodel.client.entity.IPreviewAnimatable;
 import com.elfmcys.yesstevemodel.molang.runtime.ExpressionEvaluator;
 import com.elfmcys.yesstevemodel.client.animation.condition.ConditionSwing;
-import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import org.apache.commons.lang3.StringUtils;
@@ -40,25 +39,19 @@ public class ItemHoldAnimationPredicate implements IAnimationPredicate<LivingAni
                 return PlayState.CONTINUE;
             }
         }
-        if (InputStateKey.isAnyHandSwinging(livingEntity) && !livingEntity.isSleeping()) {
-            InteractionHand swingingHand = InputStateKey.getSwingingHand(livingEntity);
-            boolean shouldStartSwing = livingEntity.swinging
-                    ? livingEntity.swingTime == 0
-                    : InputStateKey.isLocalPlayerEntity(livingEntity)
-                    && InputStateKey.isLocalSwinging(swingingHand)
-                    && InputStateKey.getLocalSwingPulseAge() <= 1;
-            if (shouldStartSwing && ((LivingAnimatable) event.getAnimatable()).getPositionTracker().markProcessed(1)) {
+        if (livingEntity.swinging && !livingEntity.isSleeping()) {
+            if (livingEntity.swingTime == 0 && ((LivingAnimatable) event.getAnimatable()).getPositionTracker().markProcessed(1)) {
                 event.getController().stopTransition();
             }
             ConditionManager conditionManager = event.getAnimatable().getModelConfig();
-            ConditionSwing conditionSwing = swingingHand == InteractionHand.MAIN_HAND ? conditionManager.getSwingMainhand() : conditionManager.getSwingOffhand();
+            ConditionSwing conditionSwing = livingEntity.swingingArm == InteractionHand.MAIN_HAND ? conditionManager.getSwingMainhand() : conditionManager.getSwingOffhand();
             if (conditionSwing != null) {
-                String str2 = conditionSwing.doTest(livingEntity, swingingHand);
+                String str2 = conditionSwing.doTest(livingEntity, livingEntity.swingingArm);
                 if (StringUtils.isNoneBlank(str2)) {
                     return IAnimationPredicate.playAnimationWithValid(event, str2, ILoopType.EDefaultLoopTypes.PLAY_ONCE, i);
                 }
             }
-            return IAnimationPredicate.playAnimationWithValid(event, swingingHand == InteractionHand.MAIN_HAND ? "swing_hand" : "swing_offhand", ILoopType.EDefaultLoopTypes.PLAY_ONCE, i);
+            return IAnimationPredicate.playAnimationWithValid(event, livingEntity.swingingArm == InteractionHand.MAIN_HAND ? "swing_hand" : "swing_offhand", ILoopType.EDefaultLoopTypes.PLAY_ONCE, i);
         }
         return PlayState.CONTINUE;
     }

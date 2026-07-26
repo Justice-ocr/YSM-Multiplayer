@@ -6,7 +6,6 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import rip.ysm.compat.touhoulittlemaid.TouhouLittleMaidCompat;
 import com.elfmcys.yesstevemodel.util.accessors.ProjectileStateAccessor;
 import com.elfmcys.yesstevemodel.client.animation.molang.functions.ysm.*;
-import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import rip.ysm.compat.cosmeticarmorreworked.CosmeticArmorHelper;
 import rip.ysm.compat.curios.CuriosCompat;
 import com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer;
@@ -136,10 +135,10 @@ public class YSMBinding extends ContextBinding {
         livingEntityVar("offhand_charged_crossbow", ctx -> isChargedCrossbow(ctx, InteractionHand.OFF_HAND));
 
         livingEntityVar("is_fishing", YSMBinding::isFishing);
-        livingEntityVar("swinging", ctx -> InputStateKey.isAnyHandSwinging(ctx.entity()));
-        livingEntityVar("swing_time", ctx -> InputStateKey.getSwingTicks(ctx.entity(), ctx.animationEvent().getFrameTime()));
-        livingEntityVar("swinging_arm", ctx -> InputStateKey.getSwingingHand(ctx.entity()) == InteractionHand.MAIN_HAND ? 0 : 1);
-        livingEntityVar("attack_time", ctx -> InputStateKey.getAttackProgress(ctx.entity(), ctx.animationEvent().getFrameTime()));
+        livingEntityVar("swinging", ctx -> ctx.entity().swinging);
+        livingEntityVar("swing_time", ctx -> ctx.entity().swingTime);
+        livingEntityVar("swinging_arm", ctx -> ctx.entity().swingingArm == InteractionHand.MAIN_HAND ? 0 : 1);
+        livingEntityVar("attack_time", ctx -> ctx.entity().getAttackAnim(ctx.animationEvent().getFrameTime()));
         playerEntityVar("texture_name", new TextureName());
         playerEntityVar("first_person_mod_hide", new FirstPersonModHide());
 

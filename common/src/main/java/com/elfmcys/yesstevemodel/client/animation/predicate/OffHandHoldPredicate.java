@@ -3,7 +3,6 @@ package com.elfmcys.yesstevemodel.client.animation.predicate;
 import com.elfmcys.yesstevemodel.client.animation.IAnimationPredicate;
 import com.elfmcys.yesstevemodel.client.entity.LivingAnimatable;
 import com.elfmcys.yesstevemodel.client.animation.condition.ConditionHold;
-import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import com.elfmcys.yesstevemodel.geckolib3.core.builder.ILoopType;
 import com.elfmcys.yesstevemodel.geckolib3.core.event.predicate.AnimationEvent;
 import com.elfmcys.yesstevemodel.geckolib3.core.enums.PlayState;
@@ -56,7 +55,7 @@ public class OffHandHoldPredicate implements IAnimationPredicate<LivingAnimatabl
     }
 
     private boolean checkSwingAndUse(LivingEntity entity, InteractionHand hand) {
-        if (InputStateKey.isSwinging(entity, hand)) {
+        if (entity.swinging && entity.swingingArm == hand) {
             return false;
         }
         return !entity.isUsingItem() || entity.getUsedItemHand() != hand;

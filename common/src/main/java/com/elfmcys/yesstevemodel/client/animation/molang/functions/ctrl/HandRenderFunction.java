@@ -4,7 +4,6 @@ import com.elfmcys.yesstevemodel.geckolib3.core.molang.context.IContext;
 import com.elfmcys.yesstevemodel.geckolib3.util.MolangUtils;
 import com.elfmcys.yesstevemodel.geckolib3.core.molang.funciton.entity.LivingEntityFunction;
 import com.elfmcys.yesstevemodel.client.animation.condition.InnerClassify;
-import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import com.elfmcys.yesstevemodel.molang.runtime.ExecutionContext;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -48,7 +47,7 @@ public class HandRenderFunction extends LivingEntityFunction {
     }
 
     public static HandRenderFunction createWhenSwinging() {
-        return new HandRenderFunction(InputStateKey::isSwinging);
+        return new HandRenderFunction((entity, interactionHand) -> entity.swinging && !entity.isSleeping());
     }
 
     public static HandRenderFunction createWhenUsing() {
