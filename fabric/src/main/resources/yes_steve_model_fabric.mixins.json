@@ -8,7 +8,6 @@
   },
   "client": [
     "client.ItemInHandRendererMixin",
-    "client.PlayerItemInHandLayerMixin",
     "client.PlayerRendererMixin",
     "client.YSMSoundInstanceFabricMixin"
   ],
