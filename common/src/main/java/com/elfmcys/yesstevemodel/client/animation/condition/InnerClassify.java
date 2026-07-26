@@ -25,7 +25,7 @@ public class InnerClassify {
         if (SlashBladeCompat.isSlashBladeItem(itemStack)) {
             return "slashblade";
         }
-        if (itemStack.is(ItemTagsConstants.SWORDS)) {
+        if (isVanillaSword(item) || itemStack.is(ItemTags.SWORDS) || itemStack.is(ItemTagsConstants.SWORDS)) {
             return "sword";
         }
         if (item instanceof MaceItem || itemStack.is(ItemTagsConstants.MACE)) {
@@ -34,16 +34,16 @@ public class InnerClassify {
         if (TouhouLittleMaidCompat.isMaidItem(item)) {
             return "gohei";
         }
-        if ((item instanceof AxeItem) || itemStack.is(ItemTagsConstants.AXES)) {
+        if ((item instanceof AxeItem) || itemStack.is(ItemTags.AXES) || itemStack.is(ItemTagsConstants.AXES)) {
             return "axe";
         }
-        if (itemStack.is(ItemTagsConstants.PICKAXES)) {
+        if (itemStack.is(ItemTags.PICKAXES) || itemStack.is(ItemTagsConstants.PICKAXES)) {
             return "pickaxe";
         }
-        if ((item instanceof ShovelItem) || itemStack.is(ItemTagsConstants.SHOVELS)) {
+        if ((item instanceof ShovelItem) || itemStack.is(ItemTags.SHOVELS) || itemStack.is(ItemTagsConstants.SHOVELS)) {
             return "shovel";
         }
-        if ((item instanceof HoeItem) || itemStack.is(ItemTagsConstants.HOES)) {
+        if ((item instanceof HoeItem) || itemStack.is(ItemTags.HOES) || itemStack.is(ItemTagsConstants.HOES)) {
             return "hoe";
         }
         if ((item instanceof ShieldItem) || itemStack.is(ItemTagsConstants.SHIELDS)) {
@@ -68,5 +68,14 @@ public class InnerClassify {
             return "throwable_potion";
         }
         return "";
+    }
+
+    private static boolean isVanillaSword(Item item) {
+        return item == Items.WOODEN_SWORD
+                || item == Items.STONE_SWORD
+                || item == Items.IRON_SWORD
+                || item == Items.GOLDEN_SWORD
+                || item == Items.DIAMOND_SWORD
+                || item == Items.NETHERITE_SWORD;
     }
 }
