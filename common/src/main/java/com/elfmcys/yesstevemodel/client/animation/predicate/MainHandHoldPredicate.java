@@ -4,6 +4,7 @@ import com.elfmcys.yesstevemodel.client.animation.IAnimationPredicate;
 import rip.ysm.compat.gun.swarfare.SWarfareCompat;
 import com.elfmcys.yesstevemodel.client.entity.LivingAnimatable;
 import com.elfmcys.yesstevemodel.client.animation.condition.ConditionHold;
+import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import rip.ysm.compat.gun.tacz.TacCompat;
 import rip.ysm.compat.touhoulittlemaid.TouhouLittleMaidCompat;
 import com.elfmcys.yesstevemodel.geckolib3.core.builder.ILoopType;
@@ -72,7 +73,7 @@ public class MainHandHoldPredicate implements IAnimationPredicate<LivingAnimatab
     }
 
     private boolean checkSwingAndUse(LivingEntity entity, InteractionHand hand) {
-        if (entity.swinging && entity.swingingArm == hand) {
+        if (InputStateKey.isSwinging(entity, hand)) {
             return false;
         }
         return !entity.isUsingItem() || entity.getUsedItemHand() != hand;
